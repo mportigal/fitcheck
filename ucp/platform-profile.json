@@ -1,0 +1,65 @@
+{
+  "_comment": [
+    "UCP Platform Profile for Fit Check.",
+    "Host this at a stable HTTPS URL and set UCP_PLATFORM_PROFILE_URL to it.",
+    "Per spec: ucp.version, ucp.services and ucp.payment_handlers are REQUIRED and",
+    "must be present even when empty.",
+    "",
+    "VERSIONS: negotiation intersects by name AND version; a capability with no",
+    "mutual version is silently excluded. Kith advertises 2026-04-08 only, so that",
+    "is the one that matters today. Older versions stay listed for stores that",
+    "haven't moved. Run probe.ts and add any version reported as advertised but",
+    "not negotiated.",
+    "",
+    "SCHEMA URLS: confirmed against Kith's live manifest 2026-08-26 — these paths",
+    "are what real Shopify stores advertise, not guesses.",
+    "",
+    "dev.shopify.catalog: Shopify's catalog extension, which adds filters and",
+    "variant fields on top of the base capabilities. Declared here because leaving",
+    "it out means negotiation excludes it and those fields never arrive. Spec and",
+    "schema copied verbatim from Kith's manifest."
+  ],
+  "ucp": {
+    "version": "2026-04-08",
+    "services": {},
+    "payment_handlers": {},
+    "capabilities": {
+      "dev.ucp.shopping.catalog.search": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/catalog",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/catalog_search.json"
+        },
+        {
+          "version": "2026-01-23",
+          "spec": "https://ucp.dev/2026-01-23/specification/catalog",
+          "schema": "https://ucp.dev/2026-01-23/schemas/shopping/catalog_search.json"
+        }
+      ],
+      "dev.ucp.shopping.catalog.lookup": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://ucp.dev/2026-04-08/specification/catalog",
+          "schema": "https://ucp.dev/2026-04-08/schemas/shopping/catalog_lookup.json"
+        },
+        {
+          "version": "2026-01-23",
+          "spec": "https://ucp.dev/2026-01-23/specification/catalog",
+          "schema": "https://ucp.dev/2026-01-23/schemas/shopping/catalog_lookup.json"
+        }
+      ],
+      "dev.shopify.catalog": [
+        {
+          "version": "2026-04-08",
+          "spec": "https://shopify.dev/docs/agents/catalog/storefront-catalog",
+          "schema": "https://shopify.dev/ucp/schemas/2026-04-08/shopify_catalog.json",
+          "extends": [
+            "dev.ucp.shopping.catalog.search",
+            "dev.ucp.shopping.catalog.lookup"
+          ],
+          "requires": { "protocol": { "min": "2026-04-08" } }
+        }
+      ]
+    }
+  }
+}
