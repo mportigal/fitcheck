@@ -14,6 +14,15 @@
  *      parsed out of the required `title` — and how often it's simply absent.
  *      That ratio sizes the normalizer, which is the real work of this project.
  *
+ *   3. Per product: inferred brand, gender, category, and the full Size run —
+ *      then products grouped by inferred numbering system (EU vs US/UK). A bare
+ *      label like "7" is ambiguous across US men's / UK men's / US women's (a
+ *      ~15-20mm spread). The system has to be inferred from the whole run plus
+ *      brand and category, not from the label. Also reports which brands the
+ *      catalog actually contains, and how many are among the six size/ maps —
+ *      if most sneakers are outside those six, most fit verdicts come back
+ *      unmapped and the demo needs a different store or query.
+ *
  * It also dumps one raw product per store to ./probe-output/, because the fastest
  * way to find a merchant's custom metadata fields is to read one.
  */
@@ -70,6 +79,131 @@ export function resolveSize(product: UcpProduct, variant: UcpVariant): SizeHit {
   return { source: "absent" };
 }
 
+// ---------------------------------------------------------------- per product
+
+/**
+ * Brands that size/resolver.ts actually maps (six + the Jordan alias). Kept
+ * local so ucp/ stays independent of size/ — keep in sync with BRAND_ALIASES /
+ * the CSV over there.
+ */
+const MAPPED_BRANDS = new Set(["nike", "jordan", "adidas", "new balance", "converse", "asics", "birkenstock"]);
+
+/**
+ * Brands we can *recognise* in a title or tag — a superset of MAPPED_BRANDS, so
+ * coverage math can tell "unmapped brand" (Salomon) apart from "no brand found".
+ */
+const KNOWN_BRANDS = [
+  "nike", "air jordan", "jordan", "adidas", "new balance", "converse", "asics", "birkenstock",
+  "salomon", "puma", "reebok", "vans", "hoka", "on running", "saucony", "brooks", "mizuno",
+  "veja", "norda", "merrell", "ugg", "crocs", "clarks", "dr martens", "timberland",
+  "maison margiela", "margiela", "common projects", "autry", "diadora", "onitsuka tiger",
+  "moon boot", "stepney workers club", "wales bonner",
+];
+
+const norm = (s: string) => s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+
+function canonBrand(b: string): string {
+  if (b === "air jordan") return "jordan";
+  if (b === "margiela") return "maison margiela";
+  if (b === "on running") return "on";
+  return b;
+}
+
+type NumberingSystem = "EU" | "US/UK" | "alpha" | "mixed" | "none";
+type Gender = "men" | "women" | "men+women" | "unisex" | "?";
+
+interface ProductReport {
+  title: string;
+  brand: string;
+  brandSource: "title" | "tag" | "none";
+  brandMapped: boolean;
+  gender: Gender;
+  sizeOptionName: string | null;
+  sizeLabels: string[];
+  numericRange: [number, number] | null;
+  numberingSystem: NumberingSystem;
+  rangeNote: string | null;
+  categories: string[];
+}
+
+function inferBrand(p: UcpProduct): { brand: string; source: "title" | "tag" | "none" } {
+  const byLen = [...KNOWN_BRANDS].sort((a, b) => b.length - a.length);
+  const title = norm(p.title);
+  for (const b of byLen) if (title === b || title.startsWith(b + " ")) return { brand: canonBrand(b), source: "title" };
+
+  const tags = new Set((p.tags ?? []).map(norm));
+  for (const b of byLen) if (tags.has(b)) return { brand: canonBrand(b), source: "tag" };
+
+  return { brand: "?", source: "none" };
+}
+
+function inferGender(p: UcpProduct): Gender {
+  const tags = new Set((p.tags ?? []).map(norm));
+  const m = tags.has("mens") || tags.has("men") || tags.has("m footwear");
+  const w = tags.has("wmns") || tags.has("womens") || tags.has("women") || tags.has("w footwear");
+  if (m && w) return "men+women";
+  if (m) return "men";
+  if (w) return "women";
+  if (tags.has("unisex")) return "unisex";
+  return "?";
+}
+
+const ALPHA_SIZE = /^(x*s|s|m|l|x*l|o\/s|one size|osfa)$/i;
+
+/** Classify a Size run by its shape — the whole set, not any single label. */
+function classifyRun(labels: string[]): {
+  system: NumberingSystem;
+  range: [number, number] | null;
+  note: string | null;
+} {
+  if (labels.length === 0) return { system: "none", range: null, note: null };
+
+  const nums = labels
+    .map((l) => l.match(/^\s*(\d+(?:\.\d+)?)/))
+    .map((m) => (m ? Number(m[1]) : null))
+    .filter((n): n is number => n !== null);
+
+  if (nums.length === 0) {
+    const alpha = labels.some((l) => ALPHA_SIZE.test(l.trim()));
+    return { system: alpha ? "alpha" : "none", range: null, note: null };
+  }
+
+  const min = Math.min(...nums);
+  const max = Math.max(...nums);
+  const eu = nums.filter((n) => n >= 33 && n <= 52).length;
+  const usuk = nums.filter((n) => n >= 1 && n <= 20).length;
+
+  let system: NumberingSystem;
+  if (eu === nums.length) system = "EU";
+  else if (usuk === nums.length) system = "US/UK";
+  else system = "mixed";
+
+  let note: string | null = null;
+  if (system === "EU") {
+    note = `${min}–${max} EU — resolve directly, no US/UK guess`;
+  } else if (system === "mixed") {
+    note = `${min}–${max} — two numbering systems in one option; split before resolving`;
+  } else if (max <= 8) {
+    note = `tops out at ${max} — women's US or men's UK, not men's US (those go past 12)`;
+  } else if (min >= 6) {
+    note = `${min}–${max} — men's US shape`;
+  } else {
+    note = `${min}–${max} — one numeric axis covering men's and women's; the number does not encode gender, the tags do`;
+  }
+  return { system, range: [min, max], note };
+}
+
+function sortLabels(labels: string[]): string[] {
+  return [...new Set(labels)].sort((a, b) => {
+    const na = Number.parseFloat(a);
+    const nb = Number.parseFloat(b);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    return a.localeCompare(b);
+  });
+}
+
+// ---------------------------------------------------------------- store report
+
 interface StoreReport {
   domain: string;
   ok: boolean;
@@ -86,6 +220,7 @@ interface StoreReport {
   optionNamesSeen?: Record<string, number>;
   sampleLabels?: string[];
   hasMetadata?: boolean;
+  productDetail?: ProductReport[];
 }
 
 async function probeStore(domain: string, query: string): Promise<StoreReport> {
@@ -137,6 +272,7 @@ async function probeStore(domain: string, query: string): Promise<StoreReport> {
   };
   const optionNamesSeen: Record<string, number> = {};
   const sampleLabels = new Set<string>();
+  const productDetail: ProductReport[] = [];
   let variants = 0;
   let hasMetadata = false;
 
@@ -153,6 +289,28 @@ async function probeStore(domain: string, query: string): Promise<StoreReport> {
       sizeSources[hit.source] += 1;
       if (hit.label && sampleLabels.size < 30) sampleLabels.add(hit.label);
     }
+
+    const sizeOpt = (product.options ?? []).find((o) => SIZE_NAME.test(o.name.trim()));
+    const sizeLabels = sizeOpt ? sortLabels(sizeOpt.values.map((v) => v.label.trim())) : [];
+    const { brand, source } = inferBrand(product);
+    const run = classifyRun(sizeLabels);
+    productDetail.push({
+      title: product.title,
+      brand,
+      brandSource: source,
+      brandMapped: MAPPED_BRANDS.has(brand),
+      gender: inferGender(product),
+      sizeOptionName: sizeOpt?.name ?? null,
+      sizeLabels,
+      numericRange: run.range,
+      numberingSystem: run.system,
+      rangeNote: run.note,
+      categories: (product.categories ?? []).map((c) => {
+        const value = String(c.value ?? "").replace("gid://shopify/TaxonomyCategory/", "");
+        const taxonomy = (c as Record<string, unknown>).taxonomy;
+        return typeof taxonomy === "string" ? `${taxonomy}:${value}` : value;
+      }),
+    });
   }
 
   if (products[0]) {
@@ -171,6 +329,7 @@ async function probeStore(domain: string, query: string): Promise<StoreReport> {
     optionNamesSeen,
     sampleLabels: [...sampleLabels],
     hasMetadata,
+    productDetail,
   };
 }
 
@@ -205,8 +364,54 @@ function print(r: StoreReport): void {
   }
   const names = Object.entries(r.optionNamesSeen ?? {}).sort((a, b) => b[1] - a[1]);
   console.log(`  option names: ${names.map(([n, c]) => `${n}(${c})`).join(", ") || "none"}`);
-  console.log(`  size labels:  ${r.sampleLabels?.join(" | ") || "none"}`);
+  console.log(`  size labels (flattened across all products — see per-product below):`);
+  console.log(`    ${r.sampleLabels?.join(" | ") || "none"}`);
   if (r.hasMetadata) console.log(`  → merchant metadata present; read the sample JSON`);
+
+  printProductDetail(r.productDetail ?? []);
+}
+
+function printProductDetail(products: ProductReport[]): void {
+  if (products.length === 0) return;
+
+  console.log(`\n  per product`);
+  for (const p of products) {
+    const tag = p.brand === "?" ? "brand?" : p.brandMapped ? "mapped" : "UNMAPPED";
+    console.log(`    ${p.title}`);
+    console.log(
+      `      ${p.brand} (${p.brandSource}, ${tag}) · ${p.gender} · ${p.numberingSystem}` +
+        `${p.categories.length ? ` · ${p.categories.join(", ")}` : ""}`,
+    );
+    console.log(`      ${p.sizeOptionName ?? "no size option"}: ${p.sizeLabels.join(" ") || "—"}`);
+    if (p.rangeNote) console.log(`      ~ ${p.rangeNote}`);
+  }
+
+  // Grouped by inferred numbering system.
+  const bySystem: Record<string, string[]> = {};
+  for (const p of products) (bySystem[p.numberingSystem] ??= []).push(p.title);
+  console.log(`\n  by numbering system`);
+  for (const [sys, titles] of Object.entries(bySystem).sort((a, b) => b[1].length - a[1].length)) {
+    console.log(`    ${sys.padEnd(7)} ${String(titles.length).padStart(2)}  ${titles.join("; ")}`);
+  }
+
+  // Brand coverage against the six mapped brands.
+  const byBrand: Record<string, number> = {};
+  for (const p of products) byBrand[p.brand] = (byBrand[p.brand] ?? 0) + 1;
+  const mapped = products.filter((p) => p.brandMapped).length;
+  const unrecognised = byBrand["?"] ?? 0;
+  const unmappedBrands = [...new Set(products.filter((p) => p.brand !== "?" && !p.brandMapped).map((p) => p.brand))];
+
+  console.log(`\n  brand coverage — ${mapped}/${products.length} products are one of the six mapped brands`);
+  for (const [b, c] of Object.entries(byBrand).sort((a, b) => b[1] - a[1])) {
+    const label = b === "?" ? "no brand detected" : MAPPED_BRANDS.has(b) ? "mapped" : "NOT mapped";
+    console.log(`    ${b.padEnd(16)} ${String(c).padStart(2)}  ${label}`);
+  }
+  if (unmappedBrands.length) {
+    console.log(`  ! ${unmappedBrands.join(", ")} present but unmapped — fit verdicts for these come back unmapped_brand`);
+  }
+  if (unrecognised) {
+    console.log(`  ! ${unrecognised} product(s) with no brand detected from title or tags`);
+  }
 }
 
 async function main(): Promise<void> {
@@ -237,11 +442,20 @@ async function main(): Promise<void> {
     (n, r) => n + (r.sizeSources?.["variant.options"] ?? 0),
     0,
   );
+  const allProducts = reports.flatMap((r) => r.productDetail ?? []);
+  const mappedProducts = allProducts.filter((p) => p.brandMapped).length;
+
   console.log(`\n${"─".repeat(64)}`);
   console.log(
     `${pct(trustworthy, totalVariants)} of ${totalVariants} variants gave a clean ` +
       `variant.options size. The rest is the normalizer's job.`,
   );
+  if (allProducts.length) {
+    console.log(
+      `${pct(mappedProducts, allProducts.length)} of ${allProducts.length} products are a mapped ` +
+        `brand — the rest resolve as unmapped_brand for this query.`,
+    );
+  }
   console.log(`Raw samples + report.json in ${OUT_DIR}/`);
 }
 
