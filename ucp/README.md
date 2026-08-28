@@ -16,9 +16,17 @@ probe.ts                day-1 script: what stores advertise, and is size data ac
 Node 18+ (native `fetch`), TypeScript with `"module": "nodenext"` for the JSON
 import attribute in `negotiate.ts`.
 
-1. Host `platform-profile.json` at a stable HTTPS URL.
-2. Set `UCP_PLATFORM_PROFILE_URL` to that URL. Every request advertises it —
-   over REST as `UCP-Agent: profile="..."`, over MCP as `arguments.meta["ucp-agent"]`.
+1. Host `platform-profile.json` at a stable HTTPS URL **that serves it as
+   `application/json`**. The repo copy via jsDelivr does this, so the default
+   needs no setup:
+   `https://cdn.jsdelivr.net/gh/mportigal/fitcheck@main/ucp/platform-profile.json`
+   Do not use `raw.githubusercontent.com` — it sends `text/plain` and Shopify
+   rejects it with `profile_malformed: Invalid content type`. jsDelivr edge-
+   caches the `@main` ref ~12h; pin `@<commit-sha>` for an immutable URL or
+   `purge.jsdelivr.net/gh/...` after editing the profile.
+2. Override with `UCP_PLATFORM_PROFILE_URL` only to point elsewhere. Every
+   request advertises it — over REST as `UCP-Agent: profile="..."`, over MCP as
+   `arguments.meta["ucp-agent"]`.
 3. Run the probe before writing anything downstream:
 
 ```bash
@@ -70,9 +78,11 @@ Documented as scoping choices, not oversights:
 
 - Schema URLs in `platform-profile.json` follow the pattern from the spec's own
   profile examples; exact filenames are inferred. `curl` them.
-- The MCP envelope is now verified against Shopify's Storefront Catalog docs
-  (params wrap in a `catalog` object next to `meta`). Still unverified: whether
-  an MCP `initialize` handshake is needed before `tools/call`.
+- The MCP envelope is verified against Shopify's Storefront Catalog docs (params
+  wrap in a `catalog` object next to `meta`). The `initialize` handshake
+  question is settled: `tools/list` returns all 13 tools cold (HTTP 200, no
+  handshake) against diddo-8174.myshopify.com on 2026-08-28, so `client.ts`
+  calling `tools/call` directly is correct.
 - Shopify serves UCP over MCP only, at `{store}/api/ucp/mcp`. The REST path here
   is for non-Shopify businesses that advertise a rest binding.
 - `resolveSize` in `probe.ts` is a hypothesis about which option names mean

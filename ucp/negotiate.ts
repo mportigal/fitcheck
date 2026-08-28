@@ -26,10 +26,20 @@ import platformProfileJson from "./platform-profile.json" with { type: "json" };
 
 const PLATFORM_PROFILE = platformProfileJson as unknown as UcpProfile;
 
-/** Public URL where platform-profile.json is served. Sent on every request. */
+/**
+ * Public URL where platform-profile.json is served. Sent on every request.
+ *
+ * Default is the repo copy via jsDelivr, which serves it as
+ * `application/json`. Do NOT point this at raw.githubusercontent.com — that
+ * host sends `text/plain` and Shopify rejects it with
+ * `profile_malformed: Invalid content type` (confirmed 2026-08-28). jsDelivr
+ * caches a floating `@main` ref for ~12h at the edge; pin `@<commit-sha>` for
+ * an immutable URL, or purge via
+ * https://purge.jsdelivr.net/gh/mportigal/fitcheck@main/ucp/platform-profile.json
+ */
 export const PLATFORM_PROFILE_URL =
   process.env.UCP_PLATFORM_PROFILE_URL ??
-  "https://fitmanifest.example/.well-known/ucp-platform.json";
+  "https://cdn.jsdelivr.net/gh/mportigal/fitcheck@main/ucp/platform-profile.json";
 
 const SHOPPING_SERVICE = "dev.ucp.shopping";
 export const CATALOG_SEARCH = "dev.ucp.shopping.catalog.search";
