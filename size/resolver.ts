@@ -78,17 +78,23 @@ export interface RecommendQuery {
   brand: string;
   gender: Gender;
   footLengthMm: number;
-  /** A row within this many mm counts as an exact recommendation. Default 2. */
-  toleranceMm?: number;
 }
 
+export type RecommendStatus = "exact" | "rounded_up" | "beyond_range" | "unknown";
+
 export interface RecommendResult {
-  status: ResolveStatus;
+  status: RecommendStatus;
   /** Recommended size in each system, when resolvable. */
   us?: number;
   uk?: number;
   eu?: number;
-  /** Human string, e.g. "US 9" or "between US 8 and US 9 — size up to US 9". */
+  /** Foot length of the recommended size's row, mm. */
+  sizeLengthMm?: number;
+  /** sizeLengthMm - footLengthMm. >= 0 means the shoe is at least as long as the foot. */
+  headroomMm?: number;
+  /** When rounded up: [the US size the foot fell past, the recommended US size]. */
+  between?: [number, number];
+  /** Human string, e.g. "US 9" or "US 9 (foot between US 8 and US 9; round up)". */
   label?: string;
   offersWidthGrades?: boolean;
   resolvedBrand?: string;
@@ -312,9 +318,17 @@ export class SizeTable {
     };
   }
 
-  /** A foot length in mm -> the size to buy in this brand. Rounds up on a gap. */
+  /**
+   * A foot length in mm -> the size to buy in this brand.
+   *
+   * Shoes round UP: a shoe slightly longer than the foot is wearable, a shoe
+   * shorter than the foot is not. So this returns the *smallest* size whose row
+   * length is >= the foot. It never returns a size shorter than the foot while
+   * a longer one exists. `SNAP_MM` absorbs sub-millimetre measurement noise so
+   * a 270.3 mm foot still matches a 270 mm row as "exact".
+   */
   recommend(q: RecommendQuery): RecommendResult {
-    const tol = q.toleranceMm ?? 2;
+    const SNAP_MM = 0.5;
     const warnings: string[] = [];
     const { key: brand, aliased } = canonicalBrand(q.brand);
     if (aliased) warnings.push(`brand "${q.brand.trim()}" follows ${this.brandLabel(brand)} sizing`);
@@ -343,53 +357,48 @@ export class SizeTable {
     }
 
     const sorted = [...rows].sort((a, b) => a.footLengthMm - b.footLengthMm);
-    const nearest = sorted.reduce((best, r) =>
-      Math.abs(r.footLengthMm - q.footLengthMm) < Math.abs(best.footLengthMm - q.footLengthMm) ? r : best,
-    );
-    const pack = (r: SizeRow) => ({ us: r.us, uk: r.uk, eu: r.eu, offersWidthGrades: r.offersWidthGrades });
+    const pack = (r: SizeRow) => ({
+      us: r.us,
+      uk: r.uk,
+      eu: r.eu,
+      sizeLengthMm: r.footLengthMm,
+      headroomMm: round1(r.footLengthMm - q.footLengthMm),
+      offersWidthGrades: r.offersWidthGrades,
+    });
 
-    if (Math.abs(nearest.footLengthMm - q.footLengthMm) <= tol) {
+    // A row whose length equals the foot (within measurement noise).
+    const exact = sorted.find((r) => Math.abs(r.footLengthMm - q.footLengthMm) <= SNAP_MM);
+    if (exact) {
+      return { status: "exact", ...pack(exact), label: `US ${exact.us}`, resolvedBrand: brand, confidence: "high", warnings };
+    }
+
+    // Round up: the smallest size at least as long as the foot.
+    const up = sorted.find((r) => r.footLengthMm >= q.footLengthMm - SNAP_MM);
+    if (up) {
+      const below = [...sorted].reverse().find((r) => r.footLengthMm < q.footLengthMm - SNAP_MM);
       return {
-        status: "exact",
-        ...pack(nearest),
-        label: `US ${nearest.us}`,
+        status: "rounded_up",
+        ...pack(up),
+        between: below ? [below.us, up.us] : undefined,
+        label: below
+          ? `US ${up.us} (foot between US ${below.us} and US ${up.us}; round up)`
+          : `US ${up.us}`,
         resolvedBrand: brand,
         confidence: "high",
         warnings,
       };
     }
 
-    const lo0 = sorted[0];
-    const hi0 = sorted[sorted.length - 1];
-    if (q.footLengthMm > lo0.footLengthMm && q.footLengthMm < hi0.footLengthMm) {
-      let lo = lo0;
-      let hi = hi0;
-      for (let i = 0; i < sorted.length - 1; i++) {
-        if (sorted[i].footLengthMm < q.footLengthMm && sorted[i + 1].footLengthMm > q.footLengthMm) {
-          lo = sorted[i];
-          hi = sorted[i + 1];
-          break;
-        }
-      }
-      return {
-        status: "interpolated",
-        ...pack(hi),
-        label: `between US ${lo.us} and US ${hi.us} — size up to US ${hi.us}`,
-        resolvedBrand: brand,
-        confidence: "high",
-        warnings,
-      };
-    }
-
-    const edge = q.footLengthMm <= lo0.footLengthMm ? lo0 : hi0;
+    // Foot is longer than every mapped size.
+    const largest = sorted[sorted.length - 1];
     warnings.push(
-      `${q.footLengthMm} mm is outside ${this.brandLabel(brand)} ${q.gender}'s mapped range ` +
-        `(${lo0.footLengthMm}–${hi0.footLengthMm} mm)`,
+      `${q.footLengthMm} mm is longer than ${this.brandLabel(brand)} ${q.gender}'s largest mapped size ` +
+        `(US ${largest.us}, ${largest.footLengthMm} mm) — recommendation may still be short`,
     );
     return {
-      status: "extrapolated",
-      ...pack(edge),
-      label: `US ${edge.us} (range edge)`,
+      status: "beyond_range",
+      ...pack(largest),
+      label: `US ${largest.us} (largest mapped size)`,
       resolvedBrand: brand,
       confidence: "low",
       warnings,
@@ -418,26 +427,40 @@ export interface ResolvedFit {
 
 export interface FootEstimate {
   status: "ok" | "conflict" | "unresolved";
-  /** Intersection of each fitting shoe's tolerance band, in mm. */
+  /** Shortest / longest of the resolved fit lengths, in mm. */
   low?: number;
   high?: number;
-  /** Midpoint of [low, high] when "ok"; mean of the raw points on "conflict". */
+  /** high - low. */
+  spreadMm?: number;
+  /**
+   * Best single foot-length estimate. Present only when status === "ok".
+   * ABSENT on "conflict" — a conflict is not resolved by averaging; the UI has
+   * to ask the user which shoe fits better first.
+   */
   bestMm?: number;
+  /** On "conflict": the two statements that disagree, so the UI can name them. */
+  longerStatement?: FitStatement;
+  shorterStatement?: FitStatement;
   resolved: ResolvedFit[];
   warnings: string[];
 }
 
 /**
- * Turn "these shoes fit me" into a foot-length estimate. Each fitting shoe is
- * resolved to a length and given a +/- `toleranceMm` band; the estimate is the
- * intersection of those bands. Bands that don't overlap -> status "conflict"
- * (the caller still gets a `bestMm` from the raw mean, plus a warning). This is
- * the multi-statement intersection the UI runs every time a user reports a fit.
+ * Turn "these shoes fit me" into a foot-length estimate.
+ *
+ * Each fitting shoe resolves to a length. If those lengths sit within
+ * `agreementMm` of each other (about one half-size — the resolution a person
+ * can actually feel) they agree: the estimate is their range and `bestMm` is
+ * the midpoint. If they spread wider than that, the statements are pointing at
+ * different feet — status "conflict", `bestMm` omitted, and the longer- and
+ * shorter-reading statements named so the UI can ask which one fits better.
+ * That question is worth more than either statement alone, so surface it; do
+ * not paper over it with an average.
  */
 export function estimateFootLength(
   table: SizeTable,
   fits: FitStatement[],
-  toleranceMm = 4,
+  agreementMm = 4,
 ): FootEstimate {
   const warnings: string[] = [];
   const resolved: ResolvedFit[] = fits.map((s) => {
@@ -457,18 +480,32 @@ export function estimateFootLength(
   }
   if (points.length === 0) return { status: "unresolved", resolved, warnings };
 
-  const low = Math.max(...points.map((p) => p.footLengthMm - toleranceMm));
-  const high = Math.min(...points.map((p) => p.footLengthMm + toleranceMm));
-  const rawMean = points.reduce((n, p) => n + p.footLengthMm, 0) / points.length;
+  const shortest = points.reduce((a, b) => (b.footLengthMm < a.footLengthMm ? b : a));
+  const longest = points.reduce((a, b) => (b.footLengthMm > a.footLengthMm ? b : a));
+  const low = round1(shortest.footLengthMm);
+  const high = round1(longest.footLengthMm);
+  const spreadMm = round1(high - low);
 
-  if (low > high) {
+  if (spreadMm > agreementMm) {
+    const name = (r: ResolvedFit) =>
+      `${r.statement.brand} ${r.statement.system.toUpperCase()} ${r.statement.value}`;
     warnings.push(
-      `fit statements disagree by more than ${2 * toleranceMm} mm ` +
-        `(${points.map((p) => `${p.statement.brand} ${p.footLengthMm} mm`).join(", ")})`,
+      `${name(longest)} reads ${spreadMm} mm longer than ${name(shortest)} — more than one ` +
+        `half-size apart. Ask the user which fits better rather than averaging.`,
     );
-    return { status: "conflict", low: round1(low), high: round1(high), bestMm: round1(rawMean), resolved, warnings };
+    return {
+      status: "conflict",
+      low,
+      high,
+      spreadMm,
+      longerStatement: longest.statement,
+      shorterStatement: shortest.statement,
+      resolved,
+      warnings,
+    };
   }
-  return { status: "ok", low: round1(low), high: round1(high), bestMm: round1((low + high) / 2), resolved, warnings };
+
+  return { status: "ok", low, high, spreadMm, bestMm: round1((low + high) / 2), resolved, warnings };
 }
 
 // ------------------------------------------------------------- label parsing

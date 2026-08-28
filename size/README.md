@@ -6,8 +6,9 @@ It sits between the UCP catalog read and the fit check.
 
 ```
 sizely-shoe-sample.csv   reference rows from SizeAI — real measurements, not a curve
-resolver.ts              SizeTable: resolve() label→mm, recommend() mm→label, parseSizeLabel()
-demo.ts                  npx tsx size/demo.ts — the one-screen "labels lie, length is truth" pitch
+resolver.ts              SizeTable: resolve() / recommend() / estimateFootLength() / parseSizeLabel()
+resolver.test.ts         npm test — node:test via tsx
+demo.ts                  npm run demo — the "labels lie, length is truth" pitch, end to end
 ```
 
 **Data source:** `sizely-shoe-sample.csv` is a sample dataset from **SizeAI**
@@ -42,10 +43,29 @@ Same label, **7 mm** of real spread. Resolve on length, not on the label.
 brand *is* mapped comes back interpolated/extrapolated with a `between` bracket —
 never `unknown`.
 
-`table.recommend({ brand, gender, footLengthMm })` is the reverse: it returns the
-size to buy (`us`/`uk`/`eu` + a `label`), rounding **up** across a gap.
+### `recommend` — foot length → size to buy
 
-## Brand rules (from Sizely, 2026-08-28)
+`table.recommend({ brand, gender, footLengthMm })` returns the size to buy
+(`us`/`uk`/`eu`, plus `sizeLengthMm` and `headroomMm`). It rounds **up**: the
+smallest size whose row length is `>=` the foot. A shoe slightly longer than the
+foot is wearable; one shorter than the foot is not — so it never returns a size
+shorter than the foot while a longer one exists. `status` is `exact` (a row
+equals the foot), `rounded_up`, `beyond_range` (foot longer than every mapped
+size — `confidence: "low"`), or `unknown`.
+
+### `estimateFootLength` — fit reports → one foot length
+
+`estimateFootLength(table, fits[])` resolves each "this fits me" statement to a
+length and combines them:
+
+- lengths within ~one half-size (`agreementMm`, default 4) → `status: "ok"`,
+  with `low`/`high`/`spreadMm` and a `bestMm` midpoint.
+- wider than that → `status: "conflict"`: **no `bestMm`**, plus
+  `longerStatement` / `shorterStatement` so the UI can ask *which fits better*.
+  A conflict is real signal, not noise to average away.
+- nothing resolvable → `status: "unresolved"`.
+
+## Brand rules (from SizeAI, 2026-08-28)
 
 - **Jordan → Nike.** Aliased; Jordan follows Nike sizing and Kith carries a lot
   of Jordans. Add more aliases in `BRAND_ALIASES`.
@@ -54,7 +74,7 @@ size to buy (`us`/`uk`/`eu` + a `label`), rounding **up** across a gap.
   Birkenstock's own US labels are internally inconsistent. Prefer the product's
   EU label when it exposes one.
 - **New Balance and Converse are men's-only** in this slice. Women's rows for
-  those two didn't clear Sizely's quality bar, so a women's lookup is `unknown`
+  those two didn't clear SizeAI's quality bar, so a women's lookup is `unknown`
   with a gender-specific reason, not fabricated numbers.
 - **Width grades** (New Balance, Nike, ASICS) are a separate girth dimension —
   surfaced via `offersWidthGrades`, never a change in length.
@@ -63,7 +83,7 @@ size to buy (`us`/`uk`/`eu` + a `label`), rounding **up** across a gap.
 
 - `parseSizeLabel` is heuristic: explicit `US`/`UK`/`EU` tokens win; a bare
   number ≥ 33 is read as EU, below 33 as US (ambiguous with UK — flagged
-  `ambiguous: true`). It handles `42 2/3` and `42⅔`.
+  `ambiguous: true`). It handles the `42 2/3` fraction form.
 - Interpolation is linear in the size number. Fine across one size step, rougher
   across a wide gap — check `between` before trusting a wide bracket.
 - This is a 6-brand sample. `resolve()` on anything else is `unknown` by design.
