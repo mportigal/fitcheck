@@ -19,6 +19,7 @@ import {
 // @vercel/node just for two type aliases.
 interface VercelRequest {
   method?: string;
+  url?: string;
   query: Record<string, string | string[] | undefined>;
   body?: unknown;
 }
@@ -39,8 +40,12 @@ const ROUTES: Record<string, (body: any) => unknown | Promise<unknown>> = {
 export const config = { maxDuration: 30 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const raw = req.query.slug;
-  const slug = Array.isArray(raw) ? raw.join("/") : (raw ?? "");
+  // Derive the route from the URL path — robust regardless of how the platform
+  // parses the [...slug] dynamic segment.
+  const fromUrl = (req.url ?? "").split("?")[0].replace(/^\/+api\/+/, "").replace(/\/+$/, "");
+  const rawSlug = req.query.slug;
+  const fromQuery = Array.isArray(rawSlug) ? rawSlug.join("/") : (rawSlug ?? "");
+  const slug = fromUrl || fromQuery;
 
   if (req.method === "GET" && slug === "health") {
     res.status(200).json({ ok: true });
