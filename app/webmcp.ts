@@ -10,7 +10,7 @@
  * (`navigator.modelContext.registerTool`) the tools are registered there too.
  */
 
-import { negotiate, recommend, search } from "./client";
+import { checkFit, negotiate, recommend, search } from "./client";
 import {
   addStatement,
   getProfile,
@@ -39,6 +39,14 @@ const asSystem = (v: unknown): SizeSystem | undefined =>
   v === "us" || v === "uk" || v === "eu" ? v : undefined;
 const asWidth = (v: unknown): Width | undefined =>
   v === "narrow" || v === "standard" || v === "wide" ? v : undefined;
+
+/** Foot length + gender the fit routes need, pulled from the current profile. */
+function profileFit(): { footLengthMm: number | undefined; gender: Gender | null } {
+  const p = getProfile();
+  const mm =
+    p.footLength?.bestMm ?? (p.footLength ? (p.footLength.low + p.footLength.high) / 2 : undefined);
+  return { footLengthMm: mm, gender: p.gender };
+}
 
 const TOOLS: Tool[] = [
   {
@@ -157,7 +165,39 @@ const TOOLS: Tool[] = [
       const domain = str(args.domain);
       const query = str(args.query);
       if (!domain || !query) throw new Error("domain and query are required");
-      return search(domain, query);
+      const { footLengthMm, gender } = profileFit();
+      const res = await search(domain, query, footLengthMm != null ? { footLengthMm, gender } : undefined);
+      if (footLengthMm != null) {
+        pushActivity("note", `searched ${res.scanned}, ${res.matched} fit`);
+      }
+      return res;
+    },
+  },
+  {
+    name: "check_fit",
+    description:
+      "Check whether one product fits the current profile. Reads the full size matrix " +
+      "(available/exists), infers the numbering system from the run's shape, and resolves against " +
+      "the profile's foot length, rounding up. Gender comes from the profile, never the catalog.",
+    inputSchema: {
+      type: "object",
+      required: ["store_domain", "product_id"],
+      properties: {
+        store_domain: { type: "string", description: "store hostname, e.g. kith.com" },
+        product_id: { type: "string", description: "product id from search_catalog" },
+      },
+    },
+    run: async (args) => {
+      const domain = str(args.store_domain);
+      const productId = str(args.product_id);
+      if (!domain || !productId) throw new Error("store_domain and product_id are required");
+      const { footLengthMm, gender } = profileFit();
+      if (footLengthMm === undefined) {
+        throw new Error("no foot-length estimate yet — add fit statements first");
+      }
+      const verdict = await checkFit(domain, productId, { footLengthMm, gender });
+      pushActivity("note", `${verdict.verdict}: ${verdict.sentence}`);
+      return verdict;
     },
   },
   {

@@ -6,9 +6,9 @@
  */
 
 import { negotiateStore } from "../ucp/negotiate.js";
-import { searchCatalog } from "../ucp/client.js";
+import { getProduct, searchCatalog, type OptionValueSignal } from "../ucp/client.js";
 import { UcpError } from "../ucp/types.js";
-import type { NegotiatedStore, UcpProduct } from "../ucp/types.js";
+import type { NegotiatedStore, UcpProduct, UcpVariant } from "../ucp/types.js";
 import {
   loadDefaultSizeTable,
   estimateFootLength,
@@ -16,6 +16,7 @@ import {
   type Gender,
   type SizeSystem,
 } from "../size/resolver.js";
+import { checkFit, inferNumberingSystem, type SizeAvailability } from "../size/fit.js";
 
 const table = loadDefaultSizeTable();
 
@@ -72,11 +73,29 @@ export async function routeNegotiate(body: { domain?: string }) {
   };
 }
 
-export async function routeSearch(body: { domain?: string; query?: string; limit?: number }) {
+function sortSizeLabels(labels: string[]): string[] {
+  return [...new Set(labels)].sort((a, b) => {
+    const na = Number.parseFloat(a);
+    const nb = Number.parseFloat(b);
+    return !Number.isNaN(na) && !Number.isNaN(nb) ? na - nb : a.localeCompare(b);
+  });
+}
+
+export async function routeSearch(body: {
+  domain?: string;
+  query?: string;
+  limit?: number;
+  /** When present, every product comes back with a fit verdict (labels-only — no stock check). */
+  footLengthMm?: number;
+  gender?: string;
+}) {
   const domain = (body.domain ?? "").trim();
   const query = (body.query ?? "").trim();
   if (!domain) throw new HttpError(400, "domain is required");
   if (!query) throw new HttpError(400, "query is required");
+
+  const footLengthMm = Number.isFinite(Number(body.footLengthMm)) ? Number(body.footLengthMm) : null;
+  const gender = body.gender === "women" ? "women" : body.gender === "men" ? "men" : null;
 
   const store = await getStore(domain);
   const res = await searchCatalog(store, {
@@ -87,23 +106,140 @@ export async function routeSearch(body: { domain?: string; query?: string; limit
 
   const products = (res.products ?? []).map((p) => {
     const opt = (p.options ?? []).find((o) => SIZE_OPTION.test(o.name.trim()));
+    const brand = inferBrand(p);
+    const sizeLabels = opt ? sortSizeLabels(opt.values.map((v) => v.label.trim())) : [];
     return {
       id: p.id,
       title: p.title,
-      brand: inferBrand(p),
+      brand,
       url: p.url,
       sizeOptionName: opt?.name ?? null,
-      sizeLabels: opt
-        ? [...new Set(opt.values.map((v) => v.label.trim()))].sort((a, b) => {
-            const na = Number.parseFloat(a);
-            const nb = Number.parseFloat(b);
-            return !Number.isNaN(na) && !Number.isNaN(nb) ? na - nb : a.localeCompare(b);
-          })
-        : [],
+      sizeLabels,
+      // Labels-only verdict: no getProduct call, so no stock/exists check here.
+      // check_fit(productId) does the deeper read.
+      fit:
+        footLengthMm != null
+          ? checkFit({ brand, gender, footLengthMm, runLabels: sizeLabels }, table)
+          : undefined,
     };
   });
 
-  return { domain: store.domain, query, count: products.length, products };
+  const scanned = products.length;
+  const matched = products.filter((p) => p.fit?.verdict === "fits").length;
+  return { domain: store.domain, query, scanned, matched, count: scanned, products };
+}
+
+// -------------------------------------------------------------- check_fit
+
+/**
+ * Build a per-size availability map for a product. Uses `available`/`exists` on
+ * the option values when the store provides them; otherwise probes the target
+ * and its listed neighbours with `get_product?selected=`, joining against the
+ * returned variant. Kith returns 0 variants for both sold-out and never-made
+ * sizes, so that case reads as unavailable rather than as exists:false.
+ */
+async function resolveAvailability(
+  store: NegotiatedStore,
+  productId: string,
+  sizeOptionName: string,
+  runLabels: string[],
+  interestingNums: number[],
+): Promise<Record<number, SizeAvailability>> {
+  const out: Record<number, SizeAvailability> = {};
+  const labelFor = (n: number) =>
+    runLabels.find((l) => Number.parseFloat(l) === n) ?? String(n);
+
+  await Promise.all(
+    interestingNums.map(async (n) => {
+      try {
+        const res = await getProduct(store, productId, {
+          selected: [{ name: sizeOptionName, label: labelFor(n) }],
+        });
+        const variants = (res.product?.variants ?? []) as UcpVariant[];
+        const hit = variants.find((v) =>
+          (v.options ?? []).some(
+            (o) => o.name === sizeOptionName && Number.parseFloat(o.label) === n,
+          ),
+        );
+        if (hit) {
+          out[n] = { exists: true, available: hit.availability?.available !== false };
+        } else {
+          const listed = runLabels.some((l) => Number.parseFloat(l) === n);
+          out[n] = { exists: listed, available: false };
+        }
+      } catch {
+        // leave unknown
+      }
+    }),
+  );
+  return out;
+}
+
+export async function routeCheckFit(body: {
+  domain?: string;
+  productId?: string;
+  footLengthMm?: number;
+  gender?: string;
+}) {
+  const domain = (body.domain ?? "").trim();
+  const productId = (body.productId ?? "").trim();
+  if (!domain) throw new HttpError(400, "domain is required");
+  if (!productId) throw new HttpError(400, "productId is required");
+
+  const footLengthMm = Number.isFinite(Number(body.footLengthMm)) ? Number(body.footLengthMm) : null;
+  const gender = body.gender === "women" ? "women" : body.gender === "men" ? "men" : null;
+
+  const store = await getStore(domain);
+  const res = await getProduct(store, productId);
+  const product = res.product;
+  if (!product) throw new HttpError(404, `no product ${productId}`);
+
+  const brand = inferBrand(product);
+  const opt = (product.options ?? []).find((o) => SIZE_OPTION.test(o.name.trim()));
+  const runLabels = opt ? sortSizeLabels(opt.values.map((v) => v.label.trim())) : [];
+
+  // If option values already carry availability, use them directly.
+  const signalAvail: Record<number, SizeAvailability> = {};
+  for (const v of (opt?.values ?? []) as OptionValueSignal[]) {
+    const n = Number.parseFloat(v.label);
+    if (Number.isFinite(n) && (v.available !== undefined || v.exists !== undefined)) {
+      signalAvail[n] = { exists: v.exists !== false, available: v.available !== false };
+    }
+  }
+
+  let availability = signalAvail;
+  if (Object.keys(signalAvail).length === 0 && opt && footLengthMm != null && brand) {
+    // Which sizes matter: the recommended one + its listed neighbours.
+    const rec = table.recommend({ brand, gender: gender ?? "men", footLengthMm });
+    const sys = inferNumberingSystem(runLabels);
+    const target = sys === "eu" ? rec.eu : rec.us;
+    const runNums = [...new Set(runLabels.map((l) => Number.parseFloat(l)).filter(Number.isFinite))].sort(
+      (a, b) => a - b,
+    );
+    const interesting = new Set<number>();
+    if (typeof target === "number") {
+      interesting.add(target);
+      const below = [...runNums].reverse().filter((n) => n < target).slice(0, 2);
+      const above = runNums.filter((n) => n > target).slice(0, 2);
+      for (const n of [...below, ...above]) interesting.add(n);
+    }
+    availability = await resolveAvailability(
+      store,
+      productId,
+      opt.name,
+      runLabels,
+      [...interesting],
+    );
+  }
+
+  const verdict = checkFit({ brand, gender, footLengthMm, runLabels, availability }, table);
+  return {
+    productId,
+    title: product.title,
+    url: product.url,
+    brand,
+    ...verdict,
+  };
 }
 
 interface EstimateBody {

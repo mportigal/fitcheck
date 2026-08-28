@@ -54,6 +54,25 @@ export interface EstimateResponse {
   }>;
 }
 
+export type Verdict =
+  | "fits"
+  | "size_up"
+  | "size_down"
+  | "between_sizes"
+  | "no_size"
+  | "out_of_stock"
+  | "unmapped_brand"
+  | "unknown";
+
+export interface FitVerdict {
+  verdict: Verdict;
+  numberingSystem: "us/uk" | "eu" | "mixed" | "alpha" | "none";
+  recommendedLabel: string | null;
+  sizeLengthMm: number | null;
+  headroomMm: number | null;
+  sentence: string;
+}
+
 export interface CatalogProduct {
   id: string;
   title: string;
@@ -61,6 +80,15 @@ export interface CatalogProduct {
   url?: string;
   sizeOptionName: string | null;
   sizeLabels: string[];
+  /** Present when the search carried a foot-length estimate. */
+  fit?: FitVerdict;
+}
+
+export interface CheckFitResponse extends FitVerdict {
+  productId: string;
+  title: string;
+  url?: string;
+  brand: string;
 }
 
 export interface RecommendResponse {

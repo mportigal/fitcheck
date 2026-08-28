@@ -1,5 +1,6 @@
 import type {
   CatalogProduct,
+  CheckFitResponse,
   EstimateResponse,
   FitStatement,
   Gender,
@@ -23,13 +24,37 @@ export function estimate(
   return post("/api/estimate", { statements });
 }
 
-export function search(domain: string, query: string): Promise<{
+export function search(
+  domain: string,
+  query: string,
+  profile?: { footLengthMm?: number; gender?: Gender | null },
+): Promise<{
   domain: string;
   query: string;
+  scanned: number;
+  matched: number;
   count: number;
   products: CatalogProduct[];
 }> {
-  return post("/api/search", { domain, query });
+  return post("/api/search", {
+    domain,
+    query,
+    footLengthMm: profile?.footLengthMm,
+    gender: profile?.gender ?? undefined,
+  });
+}
+
+export function checkFit(
+  domain: string,
+  productId: string,
+  profile: { footLengthMm?: number; gender?: Gender | null },
+): Promise<CheckFitResponse> {
+  return post("/api/check-fit", {
+    domain,
+    productId,
+    footLengthMm: profile.footLengthMm,
+    gender: profile.gender ?? undefined,
+  });
 }
 
 export function negotiate(domain: string): Promise<{

@@ -36,9 +36,34 @@ on `window.fitcheckMCP` (`.listTools()`, `.callTool(name, args)`) and
 | `add_fit_statement` | one statement | `{brand, value, gender?, system?}`; defaults men / us |
 | `remove_fit_statement` | — | by `id` |
 | `reset_fit_profile` | — | clear everything |
-| `search_catalog` | — | `{domain, query}` → server → ucp/ |
+| `search_catalog` | — | `{domain, query}` → server → ucp/; each product carries a `fit` verdict + `scanned`/`matched` when the profile has a foot length |
+| `check_fit` | — | `{store_domain, product_id}` → deep per-product verdict (see below) |
 | `negotiate_store` | — | `{domain}` → server → ucp/ |
 | `recommend_size` | — | `{brand}` → size to buy for the current estimate (rounds up) |
+
+### `check_fit` / per-product verdicts
+
+`POST /api/check-fit` (via the `check_fit` tool) does a `get_product`, infers the
+numbering system from the run's shape (EU 34–49 vs US/UK 3–18), takes **gender
+from the profile, never the catalog**, resolves against the profile's foot
+length rounding up, and probes availability for the target size and its listed
+neighbours.
+
+Returns `{ verdict, recommendedLabel, sizeLengthMm, headroomMm, sentence, … }`
+with `verdict` one of:
+
+`fits` · `size_up` · `size_down` · `between_sizes` · `no_size` ·
+`out_of_stock` · `unmapped_brand` · `unknown`
+
+`exists:false` ("they don't make your size") is distinguished from
+`available:false` ("your size is sold out") wherever the store exposes it. Kith
+returns zero variants for both, so a listed-but-ungettable size reads as
+`out_of_stock` there.
+
+`search_catalog` attaches a lighter, labels-only verdict to every result (no
+`get_product` per hit, so never `out_of_stock`) plus `scanned` / `matched`
+counts — enough for "searched 40, 6 fit". Run `check_fit` on a specific product
+for the stock-aware answer.
 
 Every statement change re-runs `POST /api/estimate` (which calls
 `size/estimateFootLength`), so the foot-length range and per-statement

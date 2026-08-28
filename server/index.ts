@@ -13,6 +13,7 @@ import {
   routeSearch,
   routeEstimate,
   routeRecommend,
+  routeCheckFit,
   toHttp,
 } from "./routes.js";
 
@@ -25,6 +26,7 @@ const ROUTES: Record<string, Handler> = {
   "/api/search": routeSearch,
   "/api/estimate": routeEstimate,
   "/api/recommend": routeRecommend,
+  "/api/check-fit": routeCheckFit,
 };
 
 function readBody(req: import("node:http").IncomingMessage): Promise<unknown> {
