@@ -26,7 +26,19 @@ interface Tool {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  /** Does not mutate the profile or any server state. -> annotations.readOnlyHint */
+  readOnly?: boolean;
+  /** Return value contains catalog text authored by a third party (store/merchant).
+   *  -> annotations.untrustedContentHint */
+  untrustedContent?: boolean;
   run: (args: Record<string, unknown>) => Promise<unknown> | unknown;
+}
+
+function annotationsFor(t: Tool): Record<string, boolean> {
+  const a: Record<string, boolean> = {};
+  if (t.readOnly) a.readOnlyHint = true;
+  if (t.untrustedContent) a.untrustedContentHint = true;
+  return a;
 }
 
 const str = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
@@ -51,6 +63,7 @@ function profileFit(): { footLengthMm: number | undefined; gender: Gender | null
 const TOOLS: Tool[] = [
   {
     name: "get_fit_profile",
+    readOnly: true,
     description: "Return the current fit profile: gender, width, foot-length range, and fit statements.",
     inputSchema: { type: "object", properties: {} },
     run: () => getProfile(),
@@ -150,6 +163,8 @@ const TOOLS: Tool[] = [
   },
   {
     name: "search_catalog",
+    readOnly: true,
+    untrustedContent: true,
     description:
       "Search a store's catalog through the UCP layer (server-side). Returns products with their " +
       "Size option labels. The browser never calls Shopify directly.",
@@ -175,6 +190,8 @@ const TOOLS: Tool[] = [
   },
   {
     name: "check_fit",
+    readOnly: true,
+    untrustedContent: true,
     description:
       "Check whether one product fits the current profile. Reads the full size matrix " +
       "(available/exists), infers the numbering system from the run's shape, and resolves against " +
@@ -202,6 +219,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "negotiate_store",
+    readOnly: true,
     description: "Run UCP discovery + capability negotiation for a store (server-side).",
     inputSchema: {
       type: "object",
@@ -216,6 +234,7 @@ const TOOLS: Tool[] = [
   },
   {
     name: "recommend_size",
+    readOnly: true,
     description:
       "Given a brand, recommend the size to buy for the current foot-length estimate (rounds up). " +
       "Needs a resolved foot-length range in the profile first.",
@@ -260,23 +279,31 @@ function summarize(args: Record<string, unknown>): string {
   return s.length > 80 ? s.slice(0, 77) + "…" : s;
 }
 
+interface ModelContext {
+  registerTool?: (def: {
+    name: string;
+    description: string;
+    inputSchema: unknown;
+    annotations?: Record<string, unknown>;
+    execute: (args: Record<string, unknown>) => Promise<unknown>;
+  }) => void;
+}
+
 declare global {
   interface Window {
     fitcheckTools?: Record<string, (args?: Record<string, unknown>) => Promise<unknown> | unknown>;
     fitcheckMCP?: {
-      listTools: () => Array<Pick<Tool, "name" | "description" | "inputSchema">>;
+      listTools: () => Array<
+        Pick<Tool, "name" | "description" | "inputSchema"> & { annotations: Record<string, boolean> }
+      >;
       callTool: typeof callTool;
     };
   }
+  interface Document {
+    modelContext?: ModelContext;
+  }
   interface Navigator {
-    modelContext?: {
-      registerTool?: (def: {
-        name: string;
-        description: string;
-        inputSchema: unknown;
-        execute: (args: Record<string, unknown>) => Promise<unknown>;
-      }) => void;
-    };
+    modelContext?: ModelContext;
   }
 }
 
@@ -290,11 +317,20 @@ export function installWebMCP(): void {
     TOOLS.map((t) => [t.name, (args: Record<string, unknown> = {}) => t.run(args)]),
   );
   window.fitcheckMCP = {
-    listTools: () => TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
+    listTools: () =>
+      TOOLS.map(({ name, description, inputSchema }) => ({
+        name,
+        description,
+        inputSchema,
+        annotations: annotationsFor(TOOLS.find((t) => t.name === name)!),
+      })),
     callTool,
   };
 
-  const mc = navigator.modelContext;
+  // WebMCP moved the registry from navigator to document; support both.
+  const mc: ModelContext | undefined = document.modelContext ?? navigator.modelContext;
+  const where = document.modelContext ? "document.modelContext" : "navigator.modelContext";
+
   if (mc && typeof mc.registerTool === "function") {
     for (const t of TOOLS) {
       try {
@@ -302,16 +338,15 @@ export function installWebMCP(): void {
           name: t.name,
           description: t.description,
           inputSchema: t.inputSchema,
+          annotations: annotationsFor(t),
           execute: (args) => callTool(t.name, args ?? {}),
         });
       } catch (err) {
-        console.warn(`navigator.modelContext.registerTool failed for ${t.name}`, err);
+        console.warn(`${where}.registerTool failed for ${t.name}`, err);
       }
     }
-    console.info("fitcheck: registered", TOOLS.length, "tools via navigator.modelContext");
+    console.info(`fitcheck: registered ${TOOLS.length} tools via ${where}`);
   } else {
-    console.info(
-      "fitcheck: navigator.modelContext not present — tools available on window.fitcheckMCP",
-    );
+    console.info("fitcheck: no modelContext registry — tools available on window.fitcheckMCP");
   }
 }

@@ -25,9 +25,14 @@ components/ChatPanel       tool-activity feed + a few typed shortcuts for solo d
 
 ## WebMCP tools
 
-Registered on `navigator.modelContext` when the browser supports it, and always
-on `window.fitcheckMCP` (`.listTools()`, `.callTool(name, args)`) and
+Registered on `document.modelContext`, falling back to `navigator.modelContext`,
+and always on `window.fitcheckMCP` (`.listTools()`, `.callTool(name, args)`) and
 `window.fitcheckTools[name](args)` for console / test use.
+
+Each descriptor carries `annotations`: `readOnlyHint` on every tool that doesn't
+mutate the profile (`get_fit_profile`, `search_catalog`, `check_fit`,
+`negotiate_store`, `recommend_size`), and `untrustedContentHint` on the two that
+return third-party catalog text (`search_catalog`, `check_fit`).
 
 | tool | writes | notes |
 |---|---|---|

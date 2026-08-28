@@ -32,6 +32,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type Gender = "men" | "women";
@@ -172,8 +173,26 @@ export function loadSizeTable(csvText: string): SizeTable {
 /** Path to the CSV that ships with this module. */
 export const DEFAULT_CSV_PATH = fileURLToPath(new URL("./sizely-shoe-sample.csv", import.meta.url));
 
+/**
+ * Load the bundled CSV. Tries the module-relative path first (local, tests),
+ * then a cwd-relative path (serverless bundles, where `import.meta.url` points
+ * at the bundled file but `size/sizely-shoe-sample.csv` is shipped via the
+ * host's include-files config).
+ */
 export function loadDefaultSizeTable(): SizeTable {
-  return loadSizeTable(readFileSync(DEFAULT_CSV_PATH, "utf8"));
+  const candidates = [DEFAULT_CSV_PATH, resolve(process.cwd(), "size", "sizely-shoe-sample.csv")];
+  let lastErr: unknown;
+  for (const path of candidates) {
+    try {
+      return loadSizeTable(readFileSync(path, "utf8"));
+    } catch (err) {
+      lastErr = err;
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
+    }
+  }
+  throw new Error(
+    `sizely-shoe-sample.csv not found (tried ${candidates.join(", ")}): ${(lastErr as Error).message}`,
+  );
 }
 
 // ---------------------------------------------------------------------- table
