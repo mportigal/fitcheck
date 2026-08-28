@@ -5,10 +5,14 @@ label into a **foot length in millimetres** (what actually fits a foot) and back
 It sits between the UCP catalog read and the fit check.
 
 ```
-sizely-shoe-sample.csv   reference rows from Sizely — real measurements, not a curve
+sizely-shoe-sample.csv   reference rows from SizeAI — real measurements, not a curve
 resolver.ts              SizeTable: resolve() label→mm, recommend() mm→label, parseSizeLabel()
 demo.ts                  npx tsx size/demo.ts — the one-screen "labels lie, length is truth" pitch
 ```
+
+**Data source:** `sizely-shoe-sample.csv` is a sample dataset from **SizeAI**
+(sizeai.co), provided by Eddy (founder) for this submission on 2026-08-28. Real
+measured rows. Shared with credit — credit SizeAI if this data is reused.
 
 ## The point, on one screen
 

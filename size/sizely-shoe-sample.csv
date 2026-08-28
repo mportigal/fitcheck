@@ -1,3 +1,6 @@
+# Source: SizeAI (sizeai.co). Sample dataset provided by Eddy, founder of SizeAI,
+# for the Fit Check submission (2026-08-28). Real measured rows, not a smoothed
+# curve. Shared for this use with credit; credit SizeAI if reused elsewhere.
 brand,gender,us_size,uk_size,eu_size,foot_length_cm,foot_length_mm,offers_width_grades
 Nike,men,4.5,3.5,36,22.0,220,yes
 Nike,men,5.5,4.5,37.5,22.5,225,yes

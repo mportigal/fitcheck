@@ -6,10 +6,20 @@
  * 1. Same label, different feet: a men's US 9 is a different foot length in
  *    every brand.
  * 2. The resolver's four outcomes: exact, interpolated, extrapolated, unknown.
- * 3. Reverse: a measured foot length -> the size to buy per brand.
+ * 3. A worked user path: "Nike 9 fits, Converse 9.5 fits" -> foot length ->
+ *    what to buy in Birkenstock and ASICS. Exercises interpolation, EU
+ *    steering, and multi-statement intersection at once.
+ * 4. Freeform label parsing.
  */
 
-import { loadDefaultSizeTable, parseSizeLabel, type Gender, type SizeSystem } from "./resolver.js";
+import {
+  loadDefaultSizeTable,
+  parseSizeLabel,
+  estimateFootLength,
+  type FitStatement,
+  type Gender,
+  type SizeSystem,
+} from "./resolver.js";
 
 const table = loadDefaultSizeTable();
 
@@ -57,12 +67,45 @@ for (const { label, q } of cases) {
 }
 
 // 3 -------------------------------------------------------------------------
-rule("Reverse — foot length 266 mm, what do I buy?");
-for (const b of ["Nike", "Adidas", "ASICS", "Converse"]) {
-  const r = table.recommend({ brand: b, gender: "men", footLengthMm: 266 });
-  const s = r.status === "unknown" ? `unknown — ${r.reason}` : `${r.label}  (US ${r.us} / UK ${r.uk} / EU ${r.eu})`;
-  console.log(`  ${b.padEnd(10)} ${s}${r.offersWidthGrades ? "  [width grades available]" : ""}`);
+rule("Worked path — \"Nike 9 fits, Converse 9.5 fits\" -> what do I buy?");
+
+const profile: FitStatement[] = [
+  { brand: "Nike", gender: "men", system: "us", value: 9, verdict: "fits" },
+  { brand: "Converse", gender: "men", system: "us", value: 9.5, verdict: "fits" },
+];
+
+const est = estimateFootLength(table, profile);
+console.log("  the shoes that fit, resolved to length:");
+for (const r of est.resolved) {
+  const s = r.statement;
+  console.log(
+    `    ${s.brand} ${s.system.toUpperCase()} ${s.value} fits  ->  ${r.footLengthMm} mm  (${r.status}` +
+      `${r.confidence === "low" ? ", confidence low" : ""})`,
+  );
 }
+console.log(`  intersection -> foot length ${est.low}–${est.high} mm, best estimate ${est.bestMm} mm  [${est.status}]`);
+for (const w of est.warnings) console.log(`    note: ${w}`);
+
+console.log("\n  buy, by brand (Birkenstock shown in its native EU):");
+for (const b of ["Birkenstock", "ASICS", "Adidas"]) {
+  const rec = table.recommend({ brand: b, gender: "men", footLengthMm: est.bestMm! });
+  if (rec.status === "unknown") {
+    console.log(`    ${b.padEnd(12)} unknown — ${rec.reason}`);
+    continue;
+  }
+  const native = b === "Birkenstock" ? `EU ${rec.eu}` : `US ${rec.us}`;
+  console.log(
+    `    ${b.padEnd(12)} ${native.padEnd(7)} (US ${rec.us} / UK ${rec.uk} / EU ${rec.eu})  ${rec.label}` +
+      `${rec.offersWidthGrades ? "  [width grades]" : ""}`,
+  );
+}
+
+console.log("\n  why Birkenstock is read in EU — same size, two labels:");
+const bkUs = table.resolve({ brand: "Birkenstock", gender: "men", system: "us", value: 8 });
+const bkEu = table.resolve({ brand: "Birkenstock", gender: "men", system: "eu", value: 41 });
+console.log(`    by US 8  -> ${bkUs.footLengthMm} mm, confidence ${bkUs.confidence}`);
+for (const w of bkUs.warnings) console.log(`               ${w}`);
+console.log(`    by EU 41 -> ${bkEu.footLengthMm} mm, confidence ${bkEu.confidence}`);
 
 // 4 -------------------------------------------------------------------------
 rule("Freeform label parsing");

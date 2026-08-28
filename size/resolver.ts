@@ -125,7 +125,8 @@ const EXPECTED_HEADER =
   "brand,gender,us_size,uk_size,eu_size,foot_length_cm,foot_length_mm,offers_width_grades";
 
 export function loadSizeTable(csvText: string): SizeTable {
-  const lines = csvText.split(/\r?\n/).filter((l) => l.trim() !== "");
+  // Skip blank lines and `#` comments (the file carries a source-credit header).
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim() !== "" && !l.trimStart().startsWith("#"));
   const header = lines.shift();
   if (header?.trim() !== EXPECTED_HEADER) {
     throw new Error(`size CSV: unexpected header\n  got:  ${header}\n  want: ${EXPECTED_HEADER}`);
@@ -394,6 +395,80 @@ export class SizeTable {
       warnings,
     };
   }
+}
+
+// ------------------------------------------------------ profile from fit data
+
+export interface FitStatement {
+  brand: string;
+  gender: Gender;
+  system: SizeSystem;
+  value: number;
+  /** The MVP only acts on "fits"; "tight" / "loose" are reserved for later. */
+  verdict?: "fits" | "tight" | "loose";
+}
+
+export interface ResolvedFit {
+  statement: FitStatement;
+  status: ResolveStatus;
+  footLengthMm?: number;
+  confidence: Confidence;
+  warnings: string[];
+}
+
+export interface FootEstimate {
+  status: "ok" | "conflict" | "unresolved";
+  /** Intersection of each fitting shoe's tolerance band, in mm. */
+  low?: number;
+  high?: number;
+  /** Midpoint of [low, high] when "ok"; mean of the raw points on "conflict". */
+  bestMm?: number;
+  resolved: ResolvedFit[];
+  warnings: string[];
+}
+
+/**
+ * Turn "these shoes fit me" into a foot-length estimate. Each fitting shoe is
+ * resolved to a length and given a +/- `toleranceMm` band; the estimate is the
+ * intersection of those bands. Bands that don't overlap -> status "conflict"
+ * (the caller still gets a `bestMm` from the raw mean, plus a warning). This is
+ * the multi-statement intersection the UI runs every time a user reports a fit.
+ */
+export function estimateFootLength(
+  table: SizeTable,
+  fits: FitStatement[],
+  toleranceMm = 4,
+): FootEstimate {
+  const warnings: string[] = [];
+  const resolved: ResolvedFit[] = fits.map((s) => {
+    const r = table.resolve(s);
+    return { statement: s, status: r.status, footLengthMm: r.footLengthMm, confidence: r.confidence, warnings: r.warnings };
+  });
+
+  const points = resolved.filter(
+    (r): r is ResolvedFit & { footLengthMm: number } => r.footLengthMm !== undefined,
+  );
+  for (const r of resolved) {
+    if (r.footLengthMm === undefined) {
+      warnings.push(
+        `ignored ${r.statement.brand} ${r.statement.system.toUpperCase()} ${r.statement.value}: unresolved`,
+      );
+    }
+  }
+  if (points.length === 0) return { status: "unresolved", resolved, warnings };
+
+  const low = Math.max(...points.map((p) => p.footLengthMm - toleranceMm));
+  const high = Math.min(...points.map((p) => p.footLengthMm + toleranceMm));
+  const rawMean = points.reduce((n, p) => n + p.footLengthMm, 0) / points.length;
+
+  if (low > high) {
+    warnings.push(
+      `fit statements disagree by more than ${2 * toleranceMm} mm ` +
+        `(${points.map((p) => `${p.statement.brand} ${p.footLengthMm} mm`).join(", ")})`,
+    );
+    return { status: "conflict", low: round1(low), high: round1(high), bestMm: round1(rawMean), resolved, warnings };
+  }
+  return { status: "ok", low: round1(low), high: round1(high), bestMm: round1((low + high) / 2), resolved, warnings };
 }
 
 // ------------------------------------------------------------- label parsing
