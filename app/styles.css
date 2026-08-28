@@ -1,0 +1,292 @@
+:root {
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6a6a6a;
+  --line: #dcdcdc;
+  --panel: #f6f6f4;
+  --accent: #1a4fd0;
+  --warn: #9a5b00;
+  --bad: #b00020;
+  --ok: #1f7a3d;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16171a;
+    --fg: #e9e9e9;
+    --muted: #9a9a9a;
+    --line: #333537;
+    --panel: #1e1f23;
+    --accent: #7aa2ff;
+    --warn: #e0a44a;
+    --bad: #ff6b81;
+    --ok: #5bd08a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--fg);
+}
+
+button.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+}
+
+.app > header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  font-weight: 600;
+  z-index: 2;
+}
+
+.app > header .sub {
+  margin-left: 10px;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.columns {
+  display: flex;
+  width: 100%;
+  padding-top: 44px;
+}
+
+.chat {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+
+.panel {
+  flex: 0 0 360px;
+  width: 360px;
+  background: var(--panel);
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* ---- chat ---- */
+
+.transcript {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.msg {
+  max-width: 62ch;
+}
+
+.msg .who {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+
+.msg.user {
+  align-self: flex-end;
+  text-align: right;
+}
+
+.msg.tool .body,
+.msg.note .body {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.msg.note .body {
+  color: var(--warn);
+}
+
+.empty {
+  color: var(--muted);
+  max-width: 54ch;
+}
+
+.empty code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.composer {
+  border-top: 1px solid var(--line);
+  padding: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.composer textarea {
+  flex: 1 1 auto;
+  font: inherit;
+  resize: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+/* ---- panel ---- */
+
+.panel h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 18px 0 6px;
+}
+
+.panel h2:first-child {
+  margin-top: 0;
+}
+
+.field-value {
+  font-size: 18px;
+}
+
+.field-value.dim {
+  color: var(--muted);
+  font-size: 15px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.badge.ok {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.badge.conflict {
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.badge.unresolved,
+.badge.empty {
+  color: var(--muted);
+}
+
+.note-line {
+  color: var(--warn);
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.toggle-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.statements {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.statements li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.statements .grip {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.statements .brand {
+  font-weight: 600;
+}
+
+.statements .resolved {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.statements .remove {
+  flex: 0 0 auto;
+  border: none;
+  padding: 0 6px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+.statements .remove:hover {
+  color: var(--bad);
+}
+
+.tools-note {
+  margin-top: 20px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tools-note code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}

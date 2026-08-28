@@ -6,5 +6,6 @@
     "types": ["node"],
     "strict": true,
     "skipLibCheck": true
-  }
+  },
+  "include": ["ucp", "size", "server"]
 }
