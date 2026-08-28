@@ -1,0 +1,118 @@
+brand,gender,us_size,uk_size,eu_size,foot_length_cm,foot_length_mm,offers_width_grades
+Nike,men,4.5,3.5,36,22.0,220,yes
+Nike,men,5.5,4.5,37.5,22.5,225,yes
+Nike,men,6,5,38.5,23.7,237,yes
+Nike,men,7,6,40,25.0,250,yes
+Nike,men,8,7,41,25.8,258,yes
+Nike,men,9,8,42.5,26.3,263,yes
+Nike,men,9.5,8.5,43,26.7,267,yes
+Nike,men,10,9,44,27.5,275,yes
+Nike,men,11.5,10.5,45.5,28.3,283,yes
+Nike,men,12.5,11.5,47,29.2,292,yes
+Nike,men,13,12,47.5,29.6,296,yes
+Nike,women,5,2.5,35.5,22.0,220,yes
+Nike,women,5.5,3,36,22.4,224,yes
+Nike,women,6.5,4,37.5,23.3,233,yes
+Nike,women,7,4.5,38,23.7,237,yes
+Nike,women,7.5,5,38.5,24.1,241,yes
+Nike,women,8,5.5,39,24.5,245,yes
+Nike,women,8.5,6,40,25.0,250,yes
+Nike,women,9,6.5,40.5,25.4,254,yes
+Nike,women,9.5,7,41,26.0,260,yes
+Nike,women,10,7.5,42,26.2,262,yes
+Nike,women,10.5,8,42.5,26.7,267,yes
+Nike,women,11.5,9,44,26.9,269,yes
+Nike,women,12.5,10,45,27.5,275,yes
+Nike,women,13,10.5,46,28.5,285,yes
+Nike,women,13.5,11,46,28.8,288,yes
+Nike,women,14,11.5,47,29.2,292,yes
+Nike,women,14.5,12,47.5,29.6,296,yes
+Adidas,men,4.5,4,37,22.5,225,no
+Adidas,men,5.5,5,38,23.5,235,no
+Adidas,men,6.5,6,39,24.5,245,no
+Adidas,men,7.5,7,40.5,25.8,258,no
+Adidas,men,8,7.5,41.5,26.0,260,no
+Adidas,men,8.5,8,42,26.5,265,no
+Adidas,men,9,8.5,42.5,27.0,270,no
+Adidas,men,9.5,9,43,27.8,278,no
+Adidas,men,10,9.5,44,28.0,280,no
+Adidas,men,10.5,10,44.5,28.5,285,no
+Adidas,men,11.5,11,46,29.5,295,no
+Adidas,men,12,11.5,46.5,30.0,300,no
+Adidas,men,12.5,12,47,30.9,309,no
+Adidas,women,6,4,37,22.5,225,no
+Adidas,women,7,5,38,23.5,235,no
+Adidas,women,8,6,39,24.5,245,no
+Adidas,women,9,7,40.5,25.5,255,no
+Adidas,women,10,8,42,26.5,265,no
+Adidas,women,11,9,43,27.5,275,no
+Adidas,women,12,10,44.5,28.5,285,no
+Adidas,women,13,11,46,29.5,295,no
+Adidas,women,14,12,47,30.5,305,no
+New Balance,men,6.5,6,40,24.5,245,yes
+New Balance,men,7,6.5,40.5,25.0,250,yes
+New Balance,men,7.5,7,41,25.5,255,yes
+New Balance,men,8,7.5,41.5,26.0,260,yes
+New Balance,men,8.5,8,42,26.5,265,yes
+New Balance,men,9,8.5,42.5,27.0,270,yes
+New Balance,men,9.5,9,43,27.5,275,yes
+New Balance,men,10,9.5,44,28.0,280,yes
+New Balance,men,10.5,10,45,28.5,285,yes
+New Balance,men,11,10.5,45,29.0,290,yes
+New Balance,men,11.5,11,46,29.5,295,yes
+New Balance,men,12,11.5,46.5,30.0,300,yes
+Converse,men,4,3,35,22.0,220,no
+Converse,men,5,4,36.5,23.3,233,no
+Converse,men,6,5,37.5,24.0,240,no
+Converse,men,7,6,40,24.5,245,no
+Converse,men,8,7,41,25.5,255,no
+Converse,men,9,8,42.5,26.5,265,no
+Converse,men,10,9,44,27.5,275,no
+Converse,men,11,10,45,28.5,285,no
+Converse,men,12,11,45,29.5,295,no
+ASICS,men,5,4,37,23.0,230,yes
+ASICS,men,6,5,39,24.3,243,yes
+ASICS,men,7,6,40,25.2,252,yes
+ASICS,men,8.5,7.5,42,25.9,259,yes
+ASICS,men,9,8,42.5,26.8,268,yes
+ASICS,men,9.5,8.5,43.5,26.9,269,yes
+ASICS,men,10,9,44,27.8,278,yes
+ASICS,men,10.5,9.5,44.5,27.9,279,yes
+ASICS,men,11,10,45,28.5,285,yes
+ASICS,men,11.5,10.5,46,28.7,287,yes
+ASICS,men,12,11,46.5,29.2,292,yes
+ASICS,men,13,12,47.5,30.5,305,yes
+ASICS,men,14,13,48.5,30.7,307,yes
+ASICS,women,5,3,35.5,22.7,227,yes
+ASICS,women,6.5,4.5,37.5,23.0,230,yes
+ASICS,women,7,5,38,24.4,244,yes
+ASICS,women,7.5,5.5,39,24.5,245,yes
+ASICS,women,8.5,6.5,40,25.3,253,yes
+ASICS,women,9,7,40.5,26.0,260,yes
+ASICS,women,10,8,42,26.1,261,yes
+ASICS,women,10.5,8.5,42.5,26.9,269,yes
+ASICS,women,11,9,43.5,27.8,278,yes
+ASICS,women,12,10,44.5,28.5,285,yes
+ASICS,women,13,11,46.5,29.5,295,yes
+Birkenstock,men,5,4.5,38,24.5,245,no
+Birkenstock,men,6,5.5,39,25.0,250,no
+Birkenstock,men,7,6,40,26.0,260,no
+Birkenstock,men,8,7,41,26.5,265,no
+Birkenstock,men,9,8,42,27.0,270,no
+Birkenstock,men,10,9,43,28.0,280,no
+Birkenstock,men,11,9.5,44,28.5,285,no
+Birkenstock,men,12,10.5,45,29.5,295,no
+Birkenstock,men,13,11.5,46,30.0,300,no
+Birkenstock,men,14,12,47,30.5,305,no
+Birkenstock,men,15,13,48,31.0,310,no
+Birkenstock,men,16,14,49,32.0,320,no
+Birkenstock,men,17,14.5,50,32.5,325,no
+Birkenstock,women,4,2.5,35,22.5,225,no
+Birkenstock,women,5,3.5,36,23.0,230,no
+Birkenstock,women,6,4.5,37,24.0,240,no
+Birkenstock,women,7,5,38,24.5,245,no
+Birkenstock,women,8,5.5,39,25.0,250,no
+Birkenstock,women,9,7,40,26.0,260,no
+Birkenstock,women,10,7.5,41,26.5,265,no
+Birkenstock,women,11,8,42,27.0,270,no
+Birkenstock,women,12,9,43,28.0,280,no
