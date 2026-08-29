@@ -506,11 +506,10 @@ export function estimateFootLength(
   const spreadMm = round1(high - low);
 
   if (spreadMm > agreementMm) {
-    const name = (r: ResolvedFit) =>
-      `${r.statement.brand} ${r.statement.system.toUpperCase()} ${r.statement.value}`;
+    const longer = longest.statement.brand;
     warnings.push(
-      `${name(longest)} reads ${spreadMm} mm longer than ${name(shortest)} — more than one ` +
-        `half-size apart. Ask the user which fits better rather than averaging.`,
+      `These two don't agree — the ${longer.charAt(0).toUpperCase()}${longer.slice(1)} reads about ` +
+        `${spreadMm} mm longer. Which fits better?`,
     );
     return {
       status: "conflict",
