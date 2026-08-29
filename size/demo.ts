@@ -4,7 +4,7 @@
  *   npx tsx size/demo.ts
  *
  * 1. Same label, different feet: a men's US 9 is a different foot length in
- *    every brand.
+ *    each of the seven mapped brands (Nike 263 → New Balance 270 mm).
  * 2. The resolver's four outcomes: exact, interpolated, extrapolated, unknown.
  * 3. A worked user path: two shoes that fit -> foot length -> what to buy,
  *    rounding up. Then the same path with two shoes that DON'T agree, where
@@ -29,7 +29,7 @@ function rule(title: string): void {
 }
 
 // 1 -------------------------------------------------------------------------
-rule("Men's US 9 — same label, different foot length");
+rule("Men's US 9 — same label, seven brands, seven foot lengths");
 const us9 = table
   .brandKeys()
   .map((b) => ({ brand: table.brandLabel(b), r: table.resolve({ brand: b, gender: "men", system: "us", value: 9 }) }))

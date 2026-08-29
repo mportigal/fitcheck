@@ -19,8 +19,8 @@
  *      label like "7" is ambiguous across US men's / UK men's / US women's (a
  *      ~15-20mm spread). The system has to be inferred from the whole run plus
  *      brand and category, not from the label. Also reports which brands the
- *      catalog actually contains, and how many are among the six size/ maps —
- *      if most sneakers are outside those six, most fit verdicts come back
+ *      catalog actually contains, and how many are among the seven size/ maps —
+ *      if most sneakers are outside those seven, most fit verdicts come back
  *      unmapped and the demo needs a different store or query.
  *
  * It also dumps one raw product per store to ./probe-output/, because the fastest
@@ -82,15 +82,15 @@ export function resolveSize(product: UcpProduct, variant: UcpVariant): SizeHit {
 // ---------------------------------------------------------------- per product
 
 /**
- * Brands that size/resolver.ts actually maps (six + the Jordan alias). Kept
+ * Brands that size/resolver.ts actually maps (seven + the Jordan alias). Kept
  * local so ucp/ stays independent of size/ — keep in sync with BRAND_ALIASES /
  * the CSV over there.
  */
-const MAPPED_BRANDS = new Set(["nike", "jordan", "adidas", "new balance", "converse", "asics", "birkenstock"]);
+const MAPPED_BRANDS = new Set(["nike", "jordan", "adidas", "new balance", "converse", "asics", "birkenstock", "salomon"]);
 
 /**
  * Brands we can *recognise* in a title or tag — a superset of MAPPED_BRANDS, so
- * coverage math can tell "unmapped brand" (Salomon) apart from "no brand found".
+ * coverage math can tell "unmapped brand" (Hoka) apart from "no brand found".
  */
 const KNOWN_BRANDS = [
   "nike", "air jordan", "jordan", "adidas", "new balance", "converse", "asics", "birkenstock",
@@ -394,14 +394,14 @@ function printProductDetail(products: ProductReport[]): void {
     console.log(`    ${sys.padEnd(7)} ${String(titles.length).padStart(2)}  ${titles.join("; ")}`);
   }
 
-  // Brand coverage against the six mapped brands.
+  // Brand coverage against the seven mapped brands.
   const byBrand: Record<string, number> = {};
   for (const p of products) byBrand[p.brand] = (byBrand[p.brand] ?? 0) + 1;
   const mapped = products.filter((p) => p.brandMapped).length;
   const unrecognised = byBrand["?"] ?? 0;
   const unmappedBrands = [...new Set(products.filter((p) => p.brand !== "?" && !p.brandMapped).map((p) => p.brand))];
 
-  console.log(`\n  brand coverage — ${mapped}/${products.length} products are one of the six mapped brands`);
+  console.log(`\n  brand coverage — ${mapped}/${products.length} products are one of the seven mapped brands`);
   for (const [b, c] of Object.entries(byBrand).sort((a, b) => b[1] - a[1])) {
     const label = b === "?" ? "no brand detected" : MAPPED_BRANDS.has(b) ? "mapped" : "NOT mapped";
     console.log(`    ${b.padEnd(16)} ${String(c).padStart(2)}  ${label}`);

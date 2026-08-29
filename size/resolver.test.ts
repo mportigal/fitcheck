@@ -49,7 +49,7 @@ test("estimateFootLength: no resolvable statements -> unresolved", () => {
 // ------------------------------------------------------------- bug 2: round up
 
 test("recommend: never returns a size shorter than the foot when a longer one exists", () => {
-  const brands = ["Nike", "Adidas", "ASICS", "Converse", "New Balance", "Birkenstock"];
+  const brands = ["Nike", "Adidas", "ASICS", "Converse", "New Balance", "Birkenstock", "Salomon"];
   for (const brand of brands) {
     for (let footLengthMm = 240; footLengthMm <= 300; footLengthMm += 0.5) {
       const r = table.recommend({ brand, gender: "men", footLengthMm });
@@ -102,7 +102,7 @@ test("recommend: unmapped gender -> unknown, no fabricated size", () => {
 
 // ------------------------------------------------------------- resolve() sanity
 
-test("resolve: men's US 9 spans 263-270 mm across the six brands", () => {
+test("resolve: men's US 9 spans 263-270 mm across the seven brands", () => {
   const lengths = table
     .brandKeys()
     .map((b) => table.resolve({ brand: b, gender: "men", system: "us", value: 9 }).footLengthMm)
