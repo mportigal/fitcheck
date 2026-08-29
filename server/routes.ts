@@ -17,7 +17,13 @@ import {
   type Gender,
   type SizeSystem,
 } from "../size/resolver.js";
-import { checkFit, inferNumberingSystem, type SizeAvailability } from "../size/fit.js";
+import {
+  checkFit,
+  detectTitleGender,
+  inferNumberingSystem,
+  targetSize,
+  type SizeAvailability,
+} from "../size/fit.js";
 
 const table = loadDefaultSizeTable();
 
@@ -104,7 +110,7 @@ export async function routeSearch(body: {
       // check_fit(productId) does the deeper read.
       fit:
         footLengthMm != null
-          ? checkFit({ brand, gender, footLengthMm, runLabels: sizeLabels }, table)
+          ? checkFit({ brand, gender, footLengthMm, runLabels: sizeLabels, title: p.title }, table)
           : undefined,
     };
   });
@@ -194,10 +200,11 @@ export async function routeCheckFit(body: {
 
   let availability = signalAvail;
   if (Object.keys(signalAvail).length === 0 && opt && footLengthMm != null && brand) {
-    // Which sizes matter: the recommended one + its listed neighbours.
-    const rec = table.recommend({ brand, gender: gender ?? "men", footLengthMm });
+    // Probe the same size checkFit will target, plus its listed neighbours.
+    const g = gender ?? detectTitleGender(product.title) ?? "men";
+    const tgt = targetSize(table, brand, g, footLengthMm);
     const sys = inferNumberingSystem(runLabels);
-    const target = sys === "eu" ? rec.eu : rec.us;
+    const target = tgt ? (sys === "eu" ? tgt.eu : tgt.us) : undefined;
     const runNums = [...new Set(runLabels.map((l) => Number.parseFloat(l)).filter(Number.isFinite))].sort(
       (a, b) => a - b,
     );
@@ -217,7 +224,10 @@ export async function routeCheckFit(body: {
     );
   }
 
-  const verdict = checkFit({ brand, gender, footLengthMm, runLabels, availability }, table);
+  const verdict = checkFit(
+    { brand, gender, footLengthMm, runLabels, availability, title: product.title },
+    table,
+  );
   return {
     productId,
     title: product.title,

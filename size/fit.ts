@@ -3,15 +3,28 @@
  *
  * Given a shopper's foot length + gender (from the profile, never the catalog)
  * and a product's Size run, decide whether the shoe fits and which label to
- * buy. Rounds up: a shoe at least as long as the foot is wearable, a shorter
- * one is not.
+ * buy.
+ *
+ * Two rules shape the recommendation:
+ *   - Never shorter than the foot. A shoe as long as (or longer than) the foot
+ *     is wearable; a shorter one is not.
+ *   - Aim for a toe allowance on top of the bare foot length (TOE_ALLOWANCE_MM).
+ *     The size picked is the one closest to foot + allowance among the sizes
+ *     that clear the foot — so a snug grid doesn't force a big jump, but "+0 mm
+ *     room" never gets recommended.
  *
  * `checkFit` is pure. The caller (server/routes.ts) does the catalog reads and
- * hands over: the full run of listed labels, and whatever per-size
- * availability it could determine.
+ * hands over: the full run of listed labels, the product title (for gender
+ * detection), and whatever per-size availability it could determine.
  */
 
 import { canonicalBrand, type Gender, type SizeSystem, type SizeTable } from "./resolver.js";
+
+/**
+ * Toe room to target on top of the bare foot length, in mm. ~10 mm (about a
+ * finger's width past the longest toe) is the standard shoe-fitting allowance.
+ */
+export const TOE_ALLOWANCE_MM = 10;
 
 export type Verdict =
   | "fits"
@@ -39,6 +52,8 @@ export interface CheckFitInput {
   footLengthMm: number | null;
   /** Every Size label the product lists — defines the run and the numbering system. */
   runLabels: string[];
+  /** Product title — read for a women's / men's signal that the catalog data lacks. */
+  title?: string;
   /**
    * Availability keyed by the numeric size value, for whatever sizes the caller
    * resolved (at least the target and its neighbours). A value absent here has
@@ -54,7 +69,7 @@ export interface FitVerdict {
   recommendedLabel: string | null;
   /** Foot length of the recommended size, mm. */
   sizeLengthMm: number | null;
-  /** sizeLengthMm - footLengthMm. Positive = wearable slack. */
+  /** sizeLengthMm - footLengthMm. Positive = wearable slack (toe room). */
   headroomMm: number | null;
   /** One plain sentence for the UI. */
   sentence: string;
@@ -79,12 +94,57 @@ export function inferNumberingSystem(labels: string[]): NumberingSystem {
   return "mixed";
 }
 
+/**
+ * A women's-product signal in a title: "WMNS", "Women's", "Women", or a
+ * standalone "W" token. Returns null when there's no such signal (unisex, or a
+ * men's product — bare "M" is too noisy in titles to key off).
+ */
+const WOMENS_TITLE = /\b(wmns|women'?s|womens|women)\b|(^|\s)w(\s|$)/i;
+
+export function detectTitleGender(title: string): Gender | null {
+  return WOMENS_TITLE.test(title) ? "women" : null;
+}
+
+export interface TargetSize {
+  us: number;
+  uk: number;
+  eu: number;
+  sizeLengthMm: number;
+}
+
+/**
+ * The size to aim for: closest to (foot + TOE_ALLOWANCE_MM) among the sizes at
+ * least as long as the foot, preferring the larger on a tie. Null when the
+ * brand/gender isn't mapped, or every mapped size is shorter than the foot.
+ */
+export function targetSize(
+  table: SizeTable,
+  brand: string,
+  gender: Gender,
+  footLengthMm: number,
+): TargetSize | null {
+  const rows = table.slice(brand, gender);
+  if (rows.length === 0) return null;
+  const wearable = rows.filter((r) => r.footLengthMm >= footLengthMm - 0.5);
+  if (wearable.length === 0) return null;
+
+  const goal = footLengthMm + TOE_ALLOWANCE_MM;
+  const pick = wearable.reduce((best, r) => {
+    const dr = Math.abs(r.footLengthMm - goal);
+    const db = Math.abs(best.footLengthMm - goal);
+    return dr < db || (dr === db && r.footLengthMm > best.footLengthMm) ? r : best;
+  });
+  return { us: pick.us, uk: pick.uk, eu: pick.eu, sizeLengthMm: pick.footLengthMm };
+}
+
 function parseNum(label: string): number | null {
   const m = label.match(/(\d+(?:\.\d+)?)/);
   return m ? Number(m[1]) : null;
 }
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 
 export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
   const system = inferNumberingSystem(input.runLabels);
@@ -111,20 +171,42 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
     };
   }
 
-  const gender: Gender = input.gender ?? "men";
-  const resolveSystem: SizeSystem = system === "eu" ? "eu" : "us";
-  const rec = table.recommend({ brand: input.brand, gender, footLengthMm: input.footLengthMm });
-
-  if (rec.status === "unknown") {
+  // Gender: from the profile. Flag a conflict with the product's own gender
+  // rather than resolving a women's shoe against the men's curve (or vice versa).
+  const detected = input.title ? detectTitleGender(input.title) : null;
+  if (detected && input.gender && detected !== input.gender) {
     return {
       ...base,
       verdict: "unknown",
-      sentence: rec.reason ? capitalize(rec.reason) + "." : `Can't resolve a size for ${input.brand}.`,
+      sentence:
+        `This looks like a ${detected}'s shoe, but your profile is set to ${input.gender}'s. ` +
+        `Switch the profile to ${detected}'s for a verdict on this one.`,
+    };
+  }
+  const gender: Gender = input.gender ?? detected ?? "men";
+  const resolveSystem: SizeSystem = system === "eu" ? "eu" : "us";
+  const label = (n: number) => (resolveSystem === "eu" ? `EU ${n}` : `US ${n}`);
+  const room = (sizeLenMm: number) => round1(sizeLenMm - input.footLengthMm!);
+
+  if (table.slice(input.brand, gender).length === 0) {
+    return {
+      ...base,
+      verdict: "unknown",
+      sentence: `No ${gender}'s size mapping for ${cap(input.brand)}.`,
     };
   }
 
-  const targetNum = resolveSystem === "eu" ? rec.eu! : rec.us!;
-  const label = (n: number) => (resolveSystem === "eu" ? `EU ${n}` : `US ${n}`);
+  const tgt = targetSize(table, input.brand, gender, input.footLengthMm);
+  if (!tgt) {
+    return {
+      ...base,
+      verdict: "no_size",
+      sentence: `Your foot is longer than ${cap(input.brand)}'s largest ${gender}'s size.`,
+    };
+  }
+
+  const targetNum = resolveSystem === "eu" ? tgt.eu : tgt.us;
+  const targetLen = tgt.sizeLengthMm;
 
   const runNums = [...new Set(input.runLabels.map(parseNum).filter((n): n is number => n != null))].sort(
     (a, b) => a - b,
@@ -132,31 +214,18 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
   if (runNums.length === 0) {
     return { ...base, verdict: "unknown", sentence: `This product lists no readable sizes.` };
   }
-
   const min = runNums[0];
   const max = runNums[runNums.length - 1];
   const av = input.availability ?? {};
 
-  // Foot longer than anything this brand is mapped for.
-  if (rec.status === "beyond_range") {
-    return {
-      ...base,
-      verdict: "no_size",
-      recommendedLabel: label(targetNum),
-      sizeLengthMm: rec.sizeLengthMm ?? null,
-      headroomMm: rec.headroomMm ?? null,
-      sentence: `Your foot is longer than ${cap(input.brand)}'s largest mapped size (${label(targetNum)}).`,
-    };
-  }
-
-  // Foot outside what this shoe is offered in.
+  // Target size is outside what this shoe is offered in.
   if (targetNum > max || targetNum < min) {
     return {
       ...base,
       verdict: "no_size",
       recommendedLabel: label(targetNum),
-      sizeLengthMm: rec.sizeLengthMm ?? null,
-      headroomMm: rec.headroomMm ?? null,
+      sizeLengthMm: targetLen,
+      headroomMm: room(targetLen),
       sentence:
         targetNum > max
           ? `Your foot needs about ${label(targetNum)}; this shoe runs ${label(min)}–${label(max)}.`
@@ -172,8 +241,8 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
         ...base,
         verdict: "no_size",
         recommendedLabel: label(targetNum),
-        sizeLengthMm: rec.sizeLengthMm ?? null,
-        headroomMm: rec.headroomMm ?? null,
+        sizeLengthMm: targetLen,
+        headroomMm: room(targetLen),
         sentence: `${cap(input.brand)} lists ${label(targetNum)} but doesn't make it in this shoe.`,
       };
     }
@@ -182,8 +251,8 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
         ...base,
         verdict: "out_of_stock",
         recommendedLabel: label(targetNum),
-        sizeLengthMm: rec.sizeLengthMm ?? null,
-        headroomMm: rec.headroomMm ?? null,
+        sizeLengthMm: targetLen,
+        headroomMm: room(targetLen),
         sentence: `Your size (${label(targetNum)}) is sold out in this shoe.`,
       };
     }
@@ -191,9 +260,9 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
       ...base,
       verdict: "fits",
       recommendedLabel: label(targetNum),
-      sizeLengthMm: rec.sizeLengthMm ?? null,
-      headroomMm: rec.headroomMm ?? null,
-      sentence: `Your size is ${label(targetNum)} — ${rec.sizeLengthMm} mm, ${signed(rec.headroomMm)} mm room.`,
+      sizeLengthMm: targetLen,
+      headroomMm: room(targetLen),
+      sentence: `Your size is ${label(targetNum)} — ${targetLen} mm, ${signed(room(targetLen))} mm room.`,
     };
   }
 
@@ -215,7 +284,7 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
       verdict,
       recommendedLabel: label(n),
       sizeLengthMm: mm,
-      headroomMm: mm == null ? null : round1(mm - input.footLengthMm!),
+      headroomMm: mm == null ? null : room(mm),
       sentence,
     };
   };
@@ -258,10 +327,3 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
     sentence: `The sizes around your fit are all sold out in this shoe.`,
   };
 }
-
-function signed(n: number | undefined): string {
-  if (n == null) return "?";
-  return n >= 0 ? `+${n}` : `${n}`;
-}
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const capitalize = cap;
