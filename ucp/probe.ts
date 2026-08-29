@@ -30,6 +30,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { negotiateStore, CATALOG_SEARCH } from "./negotiate.js";
 import { searchCatalog } from "./client.js";
+import { inferBrand, norm, type BrandSource } from "./brand.js";
 import type { NegotiatedStore, UcpProduct, UcpVariant } from "./types.js";
 
 const OUT_DIR = "./probe-output";
@@ -88,34 +89,13 @@ export function resolveSize(product: UcpProduct, variant: UcpVariant): SizeHit {
  */
 const MAPPED_BRANDS = new Set(["nike", "jordan", "adidas", "new balance", "converse", "asics", "birkenstock", "salomon"]);
 
-/**
- * Brands we can *recognise* in a title or tag — a superset of MAPPED_BRANDS, so
- * coverage math can tell "unmapped brand" (Hoka) apart from "no brand found".
- */
-const KNOWN_BRANDS = [
-  "nike", "air jordan", "jordan", "adidas", "new balance", "converse", "asics", "birkenstock",
-  "salomon", "puma", "reebok", "vans", "hoka", "on running", "saucony", "brooks", "mizuno",
-  "veja", "norda", "merrell", "ugg", "crocs", "clarks", "dr martens", "timberland",
-  "maison margiela", "margiela", "common projects", "autry", "diadora", "onitsuka tiger",
-  "moon boot", "stepney workers club", "wales bonner",
-];
-
-const norm = (s: string) => s.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
-
-function canonBrand(b: string): string {
-  if (b === "air jordan") return "jordan";
-  if (b === "margiela") return "maison margiela";
-  if (b === "on running") return "on";
-  return b;
-}
-
 type NumberingSystem = "EU" | "US/UK" | "alpha" | "mixed" | "none";
 type Gender = "men" | "women" | "men+women" | "unisex" | "?";
 
 interface ProductReport {
   title: string;
   brand: string;
-  brandSource: "title" | "tag" | "none";
+  brandSource: BrandSource;
   brandMapped: boolean;
   gender: Gender;
   sizeOptionName: string | null;
@@ -124,17 +104,6 @@ interface ProductReport {
   numberingSystem: NumberingSystem;
   rangeNote: string | null;
   categories: string[];
-}
-
-function inferBrand(p: UcpProduct): { brand: string; source: "title" | "tag" | "none" } {
-  const byLen = [...KNOWN_BRANDS].sort((a, b) => b.length - a.length);
-  const title = norm(p.title);
-  for (const b of byLen) if (title === b || title.startsWith(b + " ")) return { brand: canonBrand(b), source: "title" };
-
-  const tags = new Set((p.tags ?? []).map(norm));
-  for (const b of byLen) if (tags.has(b)) return { brand: canonBrand(b), source: "tag" };
-
-  return { brand: "?", source: "none" };
 }
 
 function inferGender(p: UcpProduct): Gender {
@@ -292,7 +261,8 @@ async function probeStore(domain: string, query: string): Promise<StoreReport> {
 
     const sizeOpt = (product.options ?? []).find((o) => SIZE_NAME.test(o.name.trim()));
     const sizeLabels = sizeOpt ? sortLabels(sizeOpt.values.map((v) => v.label.trim())) : [];
-    const { brand, source } = inferBrand(product);
+    const { brand: brandOrNull, source } = inferBrand(product);
+    const brand = brandOrNull ?? "?";
     const run = classifyRun(sizeLabels);
     productDetail.push({
       title: product.title,

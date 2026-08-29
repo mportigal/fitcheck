@@ -7,6 +7,7 @@
 
 import { negotiateStore } from "../ucp/negotiate.js";
 import { getProduct, searchCatalog, type OptionValueSignal } from "../ucp/client.js";
+import { inferBrand } from "../ucp/brand.js";
 import { UcpError } from "../ucp/types.js";
 import type { NegotiatedStore, UcpProduct, UcpVariant } from "../ucp/types.js";
 import {
@@ -22,25 +23,9 @@ const table = loadDefaultSizeTable();
 
 const SIZE_OPTION = /^(size|shoe\s*size|us\s*size|uk\s*size|eu\s*size)$/i;
 
-// Small local brand list for search results — the fuller inference lives in
-// ucp/probe.ts. Enough to feed recommend_size.
-const KNOWN_BRANDS = [
-  "nike", "air jordan", "jordan", "adidas", "new balance", "converse", "asics",
-  "birkenstock", "salomon", "puma", "reebok", "vans", "hoka", "saucony", "brooks",
-  "veja", "merrell", "ugg", "crocs", "maison margiela", "margiela", "common projects",
-];
-
-function inferBrand(p: UcpProduct): string {
-  const title = p.title.toLowerCase().replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
-  for (const b of [...KNOWN_BRANDS].sort((a, z) => z.length - a.length)) {
-    if (title === b || title.startsWith(b + " ")) {
-      return b === "air jordan" ? "jordan" : b === "margiela" ? "maison margiela" : b;
-    }
-  }
-  const tags = new Set((p.tags ?? []).map((t) => t.toLowerCase().replace(/[-_]+/g, " ").trim()));
-  for (const b of KNOWN_BRANDS) if (tags.has(b)) return b;
-  return "";
-}
+// Brand inference is shared with ucp/probe.ts (ucp/brand.ts): title prefix, then
+// tags, then model name. It returns null for "no brand"; here that's "".
+const brandOf = (p: UcpProduct): string => inferBrand(p).brand ?? "";
 
 // -------------------------------------------------------------- store cache
 
@@ -106,7 +91,7 @@ export async function routeSearch(body: {
 
   const products = (res.products ?? []).map((p) => {
     const opt = (p.options ?? []).find((o) => SIZE_OPTION.test(o.name.trim()));
-    const brand = inferBrand(p);
+    const brand = brandOf(p);
     const sizeLabels = opt ? sortSizeLabels(opt.values.map((v) => v.label.trim())) : [];
     return {
       id: p.id,
@@ -194,7 +179,7 @@ export async function routeCheckFit(body: {
   const product = res.product;
   if (!product) throw new HttpError(404, `no product ${productId}`);
 
-  const brand = inferBrand(product);
+  const brand = brandOf(product);
   const opt = (product.options ?? []).find((o) => SIZE_OPTION.test(o.name.trim()));
   const runLabels = opt ? sortSizeLabels(opt.values.map((v) => v.label.trim())) : [];
 
