@@ -42,7 +42,7 @@ export function getProfile(): FitProfile {
 export interface Activity {
   id: string;
   at: number;
-  kind: "user" | "tool" | "note";
+  kind: "user" | "tool" | "note" | "result";
   text: string;
   detail?: unknown;
 }
