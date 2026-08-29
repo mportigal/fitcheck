@@ -198,16 +198,16 @@ const TOOLS: Tool[] = [
       "the profile's foot length, rounding up. Gender comes from the profile, never the catalog.",
     inputSchema: {
       type: "object",
-      required: ["store_domain", "product_id"],
+      required: ["domain", "product_id"],
       properties: {
-        store_domain: { type: "string", description: "store hostname, e.g. kith.com" },
-        product_id: { type: "string", description: "product id from search_catalog" },
+        domain: { type: "string", description: "store hostname, e.g. kith.com (same as search_catalog)" },
+        product_id: { type: "string", description: "the `id` field of a search_catalog result" },
       },
     },
     run: async (args) => {
-      const domain = str(args.store_domain);
+      const domain = str(args.domain);
       const productId = str(args.product_id);
-      if (!domain || !productId) throw new Error("store_domain and product_id are required");
+      if (!domain || !productId) throw new Error("domain and product_id are required");
       const { footLengthMm, gender } = profileFit();
       if (footLengthMm === undefined) {
         throw new Error("no foot-length estimate yet — add fit statements first");

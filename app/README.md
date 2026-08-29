@@ -42,7 +42,7 @@ return third-party catalog text (`search_catalog`, `check_fit`).
 | `remove_fit_statement` | — | by `id` |
 | `reset_fit_profile` | — | clear everything |
 | `search_catalog` | — | `{domain, query}` → server → ucp/; each product carries a `fit` verdict + `scanned`/`matched` when the profile has a foot length |
-| `check_fit` | — | `{store_domain, product_id}` → deep per-product verdict (see below) |
+| `check_fit` | — | `{domain, product_id}` → deep per-product verdict (see below) |
 | `negotiate_store` | — | `{domain}` → server → ucp/ |
 | `recommend_size` | — | `{brand}` → size to buy for the current estimate (rounds up) |
 

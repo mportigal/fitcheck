@@ -171,7 +171,7 @@ async function runCheck(n: number): Promise<void> {
   }
 
   const v = await call<CheckFitResponse>("check_fit", {
-    store_domain: lastSearch.domain,
+    domain: lastSearch.domain,
     product_id: product.id,
   });
   if (!v) return;
