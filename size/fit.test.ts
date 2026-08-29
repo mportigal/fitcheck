@@ -1,20 +1,21 @@
 /**
  * size/fit.test.ts — run with `npm test`.
  *
- * The verdict tree for a per-product fit check: numbering-system inference, the
- * toe-allowance target, and product-gender detection.
+ * The verdict tree for a per-product fit check: numbering-system inference,
+ * the round-up recommendation, and product-gender detection.
  */
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadDefaultSizeTable } from "./resolver.js";
-import { checkFit, detectTitleGender, inferNumberingSystem, TOE_ALLOWANCE_MM } from "./fit.js";
+import { loadDefaultSizeTable, estimateFootLength } from "./resolver.js";
+import { checkFit, detectTitleGender, inferNumberingSystem } from "./fit.js";
 
 const table = loadDefaultSizeTable();
 
 const US_FULL = "3 3.5 4 4.5 5 5.5 6 6.5 7 7.5 8 8.5 9 9.5 10 10.5 11 11.5 12 12.5 13".split(" ");
 const US_WHOLE = "6 7 8 9 10 11 12".split(" ");
 const EU_RUN = "38 39 40 41 42 43 44 45 46".split(" ");
+const BRANDS = ["Nike", "Adidas", "New Balance", "Converse", "ASICS", "Birkenstock", "Salomon"];
 
 test("inferNumberingSystem reads the run's shape", () => {
   assert.equal(inferNumberingSystem(US_FULL), "us/uk");
@@ -24,35 +25,27 @@ test("inferNumberingSystem reads the run's shape", () => {
   assert.equal(inferNumberingSystem([]), "none");
 });
 
-// ---- toe allowance -------------------------------------------------------
+// ---- round trip: no double-counting -----------------------------------
 
-test("recommendation targets foot + toe allowance, not the bare length", () => {
-  // Salomon men US 9 = 264 mm — the exact length of the foot, i.e. +0 mm room.
-  // The verdict must move to a size with real toe room.
-  const v = checkFit(
-    {
-      brand: "Salomon",
-      gender: "men",
-      footLengthMm: 264,
-      runLabels: US_FULL,
-      title: "Salomon XT-6 ADV - Black / Phantom",
-    },
-    table,
-  );
-  assert.equal(v.verdict, "fits");
-  assert.equal(v.recommendedLabel, "US 10"); // 273 mm
-  assert.equal(v.sizeLengthMm, 273);
-  assert.equal(v.headroomMm, 9);
-  assert.ok((v.headroomMm ?? 0) >= TOE_ALLOWANCE_MM - 3, "within a grid step of the allowance");
+test("round trip: a foot from '<brand> 9 fits' checks that brand as US 9, not up a size", () => {
+  for (const brand of BRANDS) {
+    const est = estimateFootLength(table, [{ brand, gender: "men", system: "us", value: 9 }]);
+    assert.equal(est.status, "ok", `${brand} estimate`);
+    const v = checkFit({ brand, gender: "men", footLengthMm: est.bestMm!, runLabels: US_FULL }, table);
+    assert.equal(v.verdict, "fits", brand);
+    assert.equal(v.recommendedLabel, "US 9", `${brand}: got ${v.recommendedLabel} for ${est.bestMm} mm`);
+    assert.equal(v.headroomMm, 0, brand);
+  }
 });
 
-test("fits: toe allowance lands exactly on a listed size", () => {
-  // Nike men US 9 = 263 mm; a 253 mm foot -> goal 263 -> US 9, +10 room.
+// ---- fits / availability --------------------------------------------
+
+test("fits: the mapped size, listed and in stock", () => {
   const v = checkFit(
     {
       brand: "Nike",
       gender: "men",
-      footLengthMm: 253,
+      footLengthMm: 263, // Nike men US 9 = 263 mm
       runLabels: US_FULL,
       availability: { 9: { exists: true, available: true } },
     },
@@ -61,13 +54,12 @@ test("fits: toe allowance lands exactly on a listed size", () => {
   assert.equal(v.verdict, "fits");
   assert.equal(v.recommendedLabel, "US 9");
   assert.equal(v.sizeLengthMm, 263);
-  assert.equal(v.headroomMm, TOE_ALLOWANCE_MM);
+  assert.equal(v.headroomMm, 0);
+  assert.match(v.sentence, /maps to/);
 });
 
-// ---- availability ------------------------------------------------------
-
 test("out_of_stock (available:false) is distinct from no_size (exists:false)", () => {
-  const base = { brand: "Nike", gender: "men" as const, footLengthMm: 253, runLabels: US_FULL };
+  const base = { brand: "Nike", gender: "men" as const, footLengthMm: 263, runLabels: US_FULL };
   const oos = checkFit({ ...base, availability: { 9: { exists: true, available: false } } }, table);
   assert.equal(oos.verdict, "out_of_stock");
 
@@ -76,7 +68,7 @@ test("out_of_stock (available:false) is distinct from no_size (exists:false)", (
   assert.match(notMade.sentence, /doesn't make it/);
 });
 
-// ---- no_size / out-of-range ------------------------------------------
+// ---- no_size / out-of-range ----------------------------------------
 
 test("no_size: foot beyond the brand's mapped range", () => {
   const v = checkFit({ brand: "Nike", gender: "men", footLengthMm: 340, runLabels: US_FULL }, table);
@@ -84,7 +76,7 @@ test("no_size: foot beyond the brand's mapped range", () => {
   assert.match(v.sentence, /longer than/);
 });
 
-test("no_size: target above what this shoe offers", () => {
+test("no_size: mapped size above what this shoe offers", () => {
   const v = checkFit(
     { brand: "Nike", gender: "men", footLengthMm: 283, runLabels: "6 7 8 9".split(" ") },
     table,
@@ -93,13 +85,13 @@ test("no_size: target above what this shoe offers", () => {
   assert.match(v.sentence, /this shoe runs/);
 });
 
-// ---- between / neighbour steering ----------------------------------
+// ---- between / neighbour steering --------------------------------
 
-test("between_sizes: target half-size not in a whole-size run -> size up", () => {
-  const v = checkFit({ brand: "Nike", gender: "men", footLengthMm: 258, runLabels: US_WHOLE }, table);
+test("between_sizes: mapped size is a half-size not in a whole-size run -> size up", () => {
+  // Nike men: 263 mm -> US 9, 267 mm -> US 9.5. A 265 mm foot rounds up to US 9.5.
+  const v = checkFit({ brand: "Nike", gender: "men", footLengthMm: 265, runLabels: US_WHOLE }, table);
   assert.equal(v.verdict, "between_sizes");
   assert.equal(v.recommendedLabel, "US 10");
-  assert.ok((v.headroomMm ?? 0) > 0);
 });
 
 test("size_down: the size up is gone, steer to the snug one below", () => {
@@ -107,7 +99,7 @@ test("size_down: the size up is gone, steer to the snug one below", () => {
     {
       brand: "Nike",
       gender: "men",
-      footLengthMm: 258,
+      footLengthMm: 265,
       runLabels: US_WHOLE,
       availability: { 10: { exists: true, available: false } },
     },
@@ -122,7 +114,7 @@ test("EU run resolves in EU directly", () => {
     {
       brand: "Birkenstock",
       gender: "men",
-      footLengthMm: 260,
+      footLengthMm: 270, // Birkenstock men EU 42 = 270 mm
       runLabels: EU_RUN,
       availability: { 42: { exists: true, available: true } },
     },
@@ -130,10 +122,10 @@ test("EU run resolves in EU directly", () => {
   );
   assert.equal(v.verdict, "fits");
   assert.equal(v.recommendedLabel, "EU 42");
-  assert.equal(v.headroomMm, TOE_ALLOWANCE_MM);
+  assert.equal(v.headroomMm, 0);
 });
 
-// ---- unmapped / unknown ---------------------------------------------
+// ---- unmapped / unknown -----------------------------------------
 
 test("unmapped_brand: no size mapping", () => {
   const v = checkFit({ brand: "Reebok", gender: "men", footLengthMm: 263, runLabels: US_FULL }, table);
@@ -157,11 +149,11 @@ test("unknown: brand mapped but not for this gender (New Balance women's-only ga
 });
 
 test("labels-only (no availability) still returns fits when the size is listed", () => {
-  const v = checkFit({ brand: "Nike", gender: "men", footLengthMm: 253, runLabels: US_FULL }, table);
+  const v = checkFit({ brand: "Nike", gender: "men", footLengthMm: 263, runLabels: US_FULL }, table);
   assert.equal(v.verdict, "fits");
 });
 
-// ---- product gender detection -------------------------------------
+// ---- product gender detection ---------------------------------
 
 test("detectTitleGender reads WMNS / Women's / standalone W", () => {
   assert.equal(detectTitleGender("adidas WMNS Samba Jane  - White"), "women");
@@ -176,7 +168,7 @@ test("gender conflict: women's product + men's profile -> unknown, and it says s
     {
       brand: "Adidas",
       gender: "men",
-      footLengthMm: 253,
+      footLengthMm: 263,
       runLabels: US_FULL,
       title: "adidas WMNS Samba Jane  - White / Alumina / Core Black",
     },
@@ -189,7 +181,7 @@ test("gender conflict: women's product + men's profile -> unknown, and it says s
 
 test("no title gender signal: resolves against the profile gender as before", () => {
   const v = checkFit(
-    { brand: "Nike", gender: "men", footLengthMm: 253, runLabels: US_FULL, title: "Nike Air Force 1 '07 - White" },
+    { brand: "Nike", gender: "men", footLengthMm: 263, runLabels: US_FULL, title: "Nike Air Force 1 '07 - White" },
     table,
   );
   assert.equal(v.verdict, "fits");
@@ -197,11 +189,11 @@ test("no title gender signal: resolves against the profile gender as before", ()
 });
 
 test("gender unset in profile: falls back to the product's detected gender", () => {
-  // Adidas women's US 9 = 255 mm; men's curve for a 245 mm foot would land elsewhere.
+  // Adidas women's US 8 = 245 mm; the men's curve for a 245 mm foot lands at US 6.5.
   const v = checkFit(
     { brand: "Adidas", gender: null, footLengthMm: 245, runLabels: US_FULL, title: "adidas WMNS Samba Jane" },
     table,
   );
   assert.equal(v.verdict, "fits");
-  assert.equal(v.recommendedLabel, "US 9");
+  assert.equal(v.recommendedLabel, "US 8");
 });

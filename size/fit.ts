@@ -5,13 +5,10 @@
  * and a product's Size run, decide whether the shoe fits and which label to
  * buy.
  *
- * Two rules shape the recommendation:
- *   - Never shorter than the foot. A shoe as long as (or longer than) the foot
- *     is wearable; a shorter one is not.
- *   - Aim for a toe allowance on top of the bare foot length (TOE_ALLOWANCE_MM).
- *     The size picked is the one closest to foot + allowance among the sizes
- *     that clear the foot — so a snug grid doesn't force a big jump, but "+0 mm
- *     room" never gets recommended.
+ * The recommendation is a plain round-up: the smallest mapped size whose
+ * `foot_length_mm` is at least the shopper's foot length. Each CSV row's
+ * `foot_length_mm` is already the foot length that size is built to fit — the
+ * maker's toe room is in the number — so no extra allowance is added on top.
  *
  * `checkFit` is pure. The caller (server/routes.ts) does the catalog reads and
  * hands over: the full run of listed labels, the product title (for gender
@@ -19,12 +16,6 @@
  */
 
 import { canonicalBrand, type Gender, type SizeSystem, type SizeTable } from "./resolver.js";
-
-/**
- * Toe room to target on top of the bare foot length, in mm. ~10 mm (about a
- * finger's width past the longest toe) is the standard shoe-fitting allowance.
- */
-export const TOE_ALLOWANCE_MM = 10;
 
 export type Verdict =
   | "fits"
@@ -67,9 +58,13 @@ export interface FitVerdict {
   numberingSystem: NumberingSystem;
   /** e.g. "US 9" or "EU 42". Null when nothing could be recommended. */
   recommendedLabel: string | null;
-  /** Foot length of the recommended size, mm. */
+  /** The foot length that size is built to fit, mm (the row's `foot_length_mm`). */
   sizeLengthMm: number | null;
-  /** sizeLengthMm - footLengthMm. Positive = wearable slack (toe room). */
+  /**
+   * `sizeLengthMm - footLengthMm`: how much longer a foot the recommended size
+   * is spec'd for than the shopper's. 0 means they're at the top of the size;
+   * a larger value means they sit comfortably inside it. Not literal toe space.
+   */
   headroomMm: number | null;
   /** One plain sentence for the UI. */
   sentence: string;
@@ -113,9 +108,10 @@ export interface TargetSize {
 }
 
 /**
- * The size to aim for: closest to (foot + TOE_ALLOWANCE_MM) among the sizes at
- * least as long as the foot, preferring the larger on a tie. Null when the
- * brand/gender isn't mapped, or every mapped size is shorter than the foot.
+ * The size to recommend: the smallest mapped size whose `foot_length_mm` is at
+ * least the shopper's foot length (a plain round-up — the maker's toe room is
+ * already in `foot_length_mm`). Null when the brand/gender isn't mapped, or
+ * every mapped size is shorter than the foot.
  */
 export function targetSize(
   table: SizeTable,
@@ -128,12 +124,7 @@ export function targetSize(
   const wearable = rows.filter((r) => r.footLengthMm >= footLengthMm - 0.5);
   if (wearable.length === 0) return null;
 
-  const goal = footLengthMm + TOE_ALLOWANCE_MM;
-  const pick = wearable.reduce((best, r) => {
-    const dr = Math.abs(r.footLengthMm - goal);
-    const db = Math.abs(best.footLengthMm - goal);
-    return dr < db || (dr === db && r.footLengthMm > best.footLengthMm) ? r : best;
-  });
+  const pick = wearable.reduce((best, r) => (r.footLengthMm < best.footLengthMm ? r : best));
   return { us: pick.us, uk: pick.uk, eu: pick.eu, sizeLengthMm: pick.footLengthMm };
 }
 
@@ -144,7 +135,6 @@ function parseNum(label: string): number | null {
 
 const round1 = (n: number) => Math.round(n * 10) / 10;
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
 
 export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
   const system = inferNumberingSystem(input.runLabels);
@@ -262,7 +252,7 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
       recommendedLabel: label(targetNum),
       sizeLengthMm: targetLen,
       headroomMm: room(targetLen),
-      sentence: `Your size is ${label(targetNum)} — ${targetLen} mm, ${signed(room(targetLen))} mm room.`,
+      sentence: `Your size is ${label(targetNum)} — the size your ${input.footLengthMm} mm foot maps to.`,
     };
   }
 

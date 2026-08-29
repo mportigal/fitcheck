@@ -100,6 +100,18 @@ test("recommend: unmapped gender -> unknown, no fabricated size", () => {
   assert.equal(r.us, undefined);
 });
 
+test("round trip: a profile built solely from '<brand> men's US 9 fits' recommends US 9 back", () => {
+  // No toe allowance is added anywhere: foot_length_mm is already the foot the
+  // size fits, so estimate -> recommend must return the size we were told fit.
+  for (const brand of ["Nike", "Adidas", "New Balance", "Converse", "ASICS", "Birkenstock", "Salomon"]) {
+    const est = estimateFootLength(table, [men(brand, 9)]);
+    assert.equal(est.status, "ok", `${brand} estimate`);
+    const r = table.recommend({ brand, gender: "men", footLengthMm: est.bestMm! });
+    assert.equal(r.us, 9, `${brand}: ${est.bestMm} mm -> US ${r.us}`);
+    assert.equal(r.status, "exact", `${brand} status`);
+  }
+});
+
 // ------------------------------------------------------------- resolve() sanity
 
 test("resolve: men's US 9 spans 263-270 mm across the seven brands", () => {

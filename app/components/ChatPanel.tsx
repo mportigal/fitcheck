@@ -176,14 +176,10 @@ async function runCheck(n: number): Promise<void> {
   });
   if (!v) return;
 
-  const room =
-    v.sizeLengthMm != null && v.headroomMm != null
-      ? `  (${v.sizeLengthMm} mm, ${v.headroomMm >= 0 ? "+" : ""}${v.headroomMm} mm)`
-      : "";
   pushActivity(
     "result",
     `check ${n} — ${v.title}  ·  ${v.brand || "?"}\n` +
-      `${v.recommendedLabel ?? "—"} · ${v.verdict}${room}\n${v.sentence}`,
+      `${v.recommendedLabel ?? "—"} · ${v.verdict}\n${v.sentence}`,
   );
 }
 
@@ -195,13 +191,9 @@ async function runRecommend(brand: string): Promise<void> {
     pushActivity("result", `recommend ${brand} — unknown\n${r.reason ?? "no size mapping"}`);
     return;
   }
-  const room =
-    r.sizeLengthMm != null && r.headroomMm != null
-      ? `  (${r.sizeLengthMm} mm, ${r.headroomMm >= 0 ? "+" : ""}${r.headroomMm} mm headroom)`
-      : "";
   pushActivity(
     "result",
-    `recommend ${brand} — ${r.label ?? `US ${r.us}`}${room}\n` +
+    `recommend ${brand} — ${r.label ?? `US ${r.us}`}\n` +
       `US ${r.us ?? "?"} / UK ${r.uk ?? "?"} / EU ${r.eu ?? "?"} · ${r.status}`,
   );
 }
