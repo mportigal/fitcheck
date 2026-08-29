@@ -295,3 +295,22 @@ button.selected {
 .tools-note code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
+
+.credit-line {
+  margin-top: 6px;
+}
+
+.credit {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.credit a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.tools-note .credit {
+  display: inline-block;
+  margin-top: 6px;
+}

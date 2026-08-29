@@ -5,6 +5,17 @@ import type { Gender, Width } from "../types";
 const GENDERS: Gender[] = ["men", "women"];
 const WIDTHS: Width[] = ["narrow", "standard", "wide"];
 
+function SizelyCredit() {
+  return (
+    <span className="credit">
+      Sizing data by{" "}
+      <a href="https://sizeai.co" target="_blank" rel="noreferrer">
+        Sizely
+      </a>
+    </span>
+  );
+}
+
 export function ProfilePanel() {
   const profile = useSyncExternalStore(subscribe, getProfile);
   const { footLength, estimateStatus, conflictNote, gender, width, statements } = profile;
@@ -32,6 +43,9 @@ export function ProfilePanel() {
       {estimateStatus === "unresolved" && (
         <div className="note-line">no fit statement resolved against a mapped brand</div>
       )}
+      <div className="credit-line">
+        <SizelyCredit />
+      </div>
 
       <h2>Gender</h2>
       <div className="toggle-row">
@@ -95,6 +109,8 @@ export function ProfilePanel() {
         <code>add_fit_statement</code>, <code>remove_fit_statement</code>,{" "}
         <code>recommend_size</code>, <code>search_catalog</code>. Call them from an agent or{" "}
         <code>window.fitcheckMCP</code>.
+        <br />
+        <SizelyCredit />
       </div>
     </aside>
   );
