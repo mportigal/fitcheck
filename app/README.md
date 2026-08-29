@@ -8,7 +8,14 @@ store.
 npm run dev        # api (8787) + vite (5173) together
 npm run build      # -> dist/
 npm run typecheck  # node code + app code
+npm run demo:full  # the demo sequence through the real route bodies (steps 5–8 hit live stores)
 ```
+
+`npm run demo:full` ([scripts/demo-full.ts](../scripts/demo-full.ts)) runs the
+eight-step demo — profile, recommend, conflict, two live-store searches, two
+`check_fit`s — through the same functions the server and the Vercel function
+call. No browser, no mock. It's a rehearsal, a smoke test (a broken deploy fails
+it), and something a reviewer can run themselves.
 
 ## Pieces
 

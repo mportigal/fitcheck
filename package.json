@@ -11,6 +11,7 @@
     "preview": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"vite preview\"",
     "test": "tsx --test size/*.test.ts",
     "demo": "tsx size/demo.ts",
+    "demo:full": "tsx scripts/demo-full.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p app/tsconfig.json"
   },
   "keywords": [],

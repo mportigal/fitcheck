@@ -7,5 +7,5 @@
     "strict": true,
     "skipLibCheck": true
   },
-  "include": ["ucp", "size", "server", "api"]
+  "include": ["ucp", "size", "server", "api", "scripts"]
 }
