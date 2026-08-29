@@ -243,7 +243,9 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
         recommendedLabel: label(targetNum),
         sizeLengthMm: targetLen,
         headroomMm: room(targetLen),
-        sentence: `Your size (${label(targetNum)}) is sold out in this shoe.`,
+        // Some stores (Kith) don't distinguish sold-out from never-stocked, so
+        // "isn't available" rather than "sold out" — true either way.
+        sentence: `${label(targetNum)} isn't available in this shoe.`,
       };
     }
     return {
@@ -290,7 +292,7 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
     return withNeighbour(
       bracketDown,
       "size_down",
-      `The ${label(bracketUp)} above your fit is gone; the ${label(bracketDown)} will run snug.`,
+      `The ${label(bracketUp)} above your fit isn't available; the ${label(bracketDown)} will run snug.`,
     );
   }
   // Both immediate neighbours are unavailable — widen the search.
@@ -299,7 +301,7 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
     return withNeighbour(
       nextUp,
       "size_up",
-      `The sizes next to your fit are gone; the ${label(nextUp)} is the closest available and will run loose.`,
+      `The sizes next to your fit aren't available; the ${label(nextUp)} is the closest that is, and will run loose.`,
     );
   }
   const nextDown = [...runNums].reverse().find((n) => n < bracketDown && gettable(n));
@@ -307,13 +309,13 @@ export function checkFit(input: CheckFitInput, table: SizeTable): FitVerdict {
     return withNeighbour(
       nextDown,
       "size_down",
-      `The sizes next to your fit are gone; only the ${label(nextDown)} is left and it will run snug.`,
+      `The sizes next to your fit aren't available; only the ${label(nextDown)} is, and it will run snug.`,
     );
   }
   return {
     ...base,
     verdict: "out_of_stock",
     recommendedLabel: label(targetNum),
-    sentence: `The sizes around your fit are all sold out in this shoe.`,
+    sentence: `The sizes around your fit aren't available in this shoe.`,
   };
 }
