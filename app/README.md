@@ -37,10 +37,10 @@ and always on `window.fitcheckMCP` (`.listTools()`, `.callTool(name, args)`) and
 `window.fitcheckTools[name](args)` for console / test use.
 
 Each descriptor carries `annotations`: `readOnlyHint` on every tool that doesn't
-mutate the profile (`get_fit_profile`, `search_catalog`, `check_fit`,
-`check_labels`, `negotiate_store`, `recommend_size`), and `untrustedContentHint`
-on the three that carry third-party page text (`search_catalog`, `check_fit`,
-`check_labels`).
+mutate the profile (`get_fit_profile`, `search_catalog`, `find_shoe`,
+`check_fit`, `check_labels`, `negotiate_store`, `recommend_size`), and
+`untrustedContentHint` on the four that carry third-party page text
+(`search_catalog`, `find_shoe`, `check_fit`, `check_labels`).
 
 | tool | writes | notes |
 |---|---|---|
@@ -50,6 +50,7 @@ on the three that carry third-party page text (`search_catalog`, `check_fit`,
 | `remove_fit_statement` | — | by `id` |
 | `reset_fit_profile` | — | clear everything |
 | `search_catalog` | — | `{domain, query}` → server → ucp/; each product carries a `fit` verdict + `scanned`/`matched` when the profile has a foot length |
+| `find_shoe` | — | `{query}` → fans out `search_catalog` across every known store in parallel, merges, fits-first; use when the person names a **shoe**, not a store |
 | `check_fit` | — | `{domain, product_id}` → deep per-product verdict (see below) |
 | `check_labels` | — | `{brand, labels[], product_title?}` → same verdict, **no store access** — the caller supplies the run |
 | `negotiate_store` | — | `{domain}` → server → ucp/ |
@@ -78,6 +79,18 @@ returns zero variants for both, so a listed-but-ungettable size reads as
 `get_product` per hit, so never `out_of_stock`) plus `scanned` / `matched`
 counts — enough for "searched 40, 6 fit". Run `check_fit` on a specific product
 for the stock-aware answer.
+
+### `find_shoe` — ask for a shoe, not a store
+
+`POST /api/find-shoe` (`{ query, footLengthMm?, gender? }`) fans out `routeSearch`
+across a hardcoded store list (`Kith`, `Stomping Ground`) with `Promise.allSettled`
+in parallel and an 8 s per-store timeout. One store erroring or timing out is
+reported in `stores[].ok/error`, not fatal. Every product carries `store` (label)
+and `storeDomain` on top of the `search_catalog` fields; the merged list is
+`fits`-first (stable, so per-store relevance order is kept). **No cross-store
+dedup** — the same shoe has a different id and title at each retailer with no
+join key, so both rows are shown, each labelled. In the chat, `check <n>` after a
+`find` resolves against that result's own store.
 
 **The resolver is source-agnostic — UCP is one adapter.** `checkFit` only wants
 the Size run and the profile; where the labels come from is the adapter's

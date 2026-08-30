@@ -4,6 +4,7 @@ import type {
   CatalogProduct,
   CheckFitResponse,
   CheckLabelsResponse,
+  FindShoeResponse,
   RecommendResponse,
 } from "../types";
 
@@ -42,8 +43,9 @@ export function ChatPanel() {
               <code>Nike 9 fits</code> · <code>Birkenstock eu 42 fits</code> · <code>women</code> ·{" "}
               <code>wide</code> · <code>reset</code>
               <br />
-              <code>search kith.com sneakers</code> · <code>check 2</code> ·{" "}
-              <code>check labels nike 7,8,9,10</code> · <code>recommend Nike</code>
+              <code>find air force 1</code> · <code>search kith.com sneakers</code> ·{" "}
+              <code>check 2</code> · <code>check labels nike 7,8,9,10</code> ·{" "}
+              <code>recommend Nike</code>
             </p>
           </div>
         )}
@@ -62,7 +64,7 @@ export function ChatPanel() {
         <textarea
           rows={2}
           value={draft}
-          placeholder='"Nike 9 fits" · "search kith.com sneakers" · "check 2" · "check labels nike 7,8,9,10" · "recommend Nike"'
+          placeholder='"Nike 9 fits" · "find air force 1" · "search kith.com sneakers" · "check 2" · "recommend Nike"'
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -88,12 +90,16 @@ const GENDER = /^(men|women)$/i;
 const WIDTH = /^(narrow|standard|wide)$/i;
 const RESET = /^(reset|clear)$/i;
 const SEARCH = /^search\s+(\S+)\s+(.+)$/i;
+const FIND = /^find\s+(.+)$/i;
 const CHECK_LABELS = /^check\s+labels\s+(.+)$/i;
 const CHECK = /^check\s+(\d+)$/i;
 const RECOMMEND = /^recommend\s+(.+)$/i;
 
-/** The last `search` result, so `check <n>` can refer to it. */
-let lastSearch: { domain: string; products: CatalogProduct[] } | null = null;
+/** A listed product from `search` or `find`, carrying which store it's from. */
+type Listed = CatalogProduct & { storeDomain: string; store?: string };
+
+/** The last `search` / `find` result, so `check <n>` can refer to it. */
+let lastSearch: { products: Listed[] } | null = null;
 
 async function call<T>(name: string, args: Record<string, unknown>): Promise<T | null> {
   const mcp = window.fitcheckMCP;
@@ -121,6 +127,8 @@ async function interpret(text: string): Promise<void> {
     await call("update_fit_profile", { width: m[1].toLowerCase() });
   } else if ((m = SEARCH.exec(text))) {
     await runSearch(m[1], m[2].trim());
+  } else if ((m = FIND.exec(text))) {
+    await runFind(m[1].trim());
   } else if ((m = CHECK_LABELS.exec(text))) {
     await runCheckLabels(m[1]);
   } else if ((m = CHECK.exec(text))) {
@@ -136,8 +144,8 @@ async function interpret(text: string): Promise<void> {
   } else {
     pushActivity(
       "note",
-      'not understood — try "Nike 9 fits", "search kith.com sneakers", "check 2", ' +
-        '"check labels nike 7,8,9,10", "recommend Nike", "reset"',
+      'not understood — try "Nike 9 fits", "find air force 1", "search kith.com sneakers", ' +
+        '"check 2", "check labels nike 7,8,9,10", "recommend Nike", "reset"',
     );
   }
 }
@@ -165,6 +173,13 @@ async function runCheckLabels(rest: string): Promise<void> {
   );
 }
 
+function rowLine(n: number, p: Listed): string {
+  const f = p.fit;
+  const size = f?.recommendedLabel ? ` · ${f.recommendedLabel}` : "";
+  const verdict = f ? ` · ${f.verdict}` : "";
+  return `${String(n).padStart(2)}. ${p.title}  ·  ${p.brand || "?"}${size}${verdict}`;
+}
+
 async function runSearch(domain: string, query: string): Promise<void> {
   const data = await call<{
     scanned: number;
@@ -173,14 +188,12 @@ async function runSearch(domain: string, query: string): Promise<void> {
   }>("search_catalog", { domain, query });
   if (!data) return;
 
-  lastSearch = { domain, products: data.products };
+  const products: Listed[] = data.products.map((p) => ({ ...p, storeDomain: domain }));
+  lastSearch = { products };
 
-  const lines = data.products.map((p, i) => {
-    const f = p.fit;
-    const size = f?.recommendedLabel ? ` · ${f.recommendedLabel}` : "";
-    const verdict = f ? ` · ${f.verdict}` : "";
-    const head = `${String(i + 1).padStart(2)}. ${p.title}  ·  ${p.brand || "?"}${size}${verdict}`;
-    return f?.sentence ? `${head}\n    ${f.sentence}` : head;
+  const lines = products.map((p, i) => {
+    const head = rowLine(i + 1, p);
+    return p.fit?.sentence ? `${head}\n    ${p.fit.sentence}` : head;
   });
 
   pushActivity(
@@ -191,9 +204,36 @@ async function runSearch(domain: string, query: string): Promise<void> {
   );
 }
 
+async function runFind(query: string): Promise<void> {
+  const data = await call<FindShoeResponse>("find_shoe", { query });
+  if (!data) return;
+
+  const products: Listed[] = data.products; // already tagged with store / storeDomain
+  lastSearch = { products };
+
+  const ok = data.stores.filter((s) => s.ok);
+  const bad = data.stores.filter((s) => !s.ok);
+  const fits = products.filter((p) => p.fit?.verdict === "fits").length;
+
+  let out =
+    `find "${query}" — searched ${ok.map((s) => `${s.label} (${s.scanned})`).join(" + ") || "(none)"} — ${fits} fit`;
+  for (const s of bad) out += `\n  ${s.label} failed: ${s.error}`;
+
+  let currentStore = "";
+  products.forEach((p, i) => {
+    if (p.store && p.store !== currentStore) {
+      currentStore = p.store;
+      out += `\n\n${currentStore}`;
+    }
+    out += `\n  ${rowLine(i + 1, p)}`;
+  });
+
+  pushActivity("result", `${out}\n\n"check <n>" resolves against whichever store that result is from.`);
+}
+
 async function runCheck(n: number): Promise<void> {
   if (!lastSearch) {
-    pushActivity("note", 'nothing to check — run "search <domain> <query>" first');
+    pushActivity("note", 'nothing to check — run "search <domain> <query>" or "find <query>" first');
     return;
   }
   const product = lastSearch.products[n - 1];
@@ -203,14 +243,14 @@ async function runCheck(n: number): Promise<void> {
   }
 
   const v = await call<CheckFitResponse>("check_fit", {
-    domain: lastSearch.domain,
+    domain: product.storeDomain,
     product_id: product.id,
   });
   if (!v) return;
 
   pushActivity(
     "result",
-    `check ${n} — ${v.title}  ·  ${v.brand || "?"}\n` +
+    `check ${n} — ${v.title}  ·  ${v.brand || "?"}${product.store ? `  ·  ${product.store}` : ""}\n` +
       `${v.recommendedLabel ?? "—"} · ${v.verdict}\n${v.sentence}`,
   );
 }

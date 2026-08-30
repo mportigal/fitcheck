@@ -3,6 +3,7 @@ import type {
   CheckFitResponse,
   CheckLabelsResponse,
   EstimateResponse,
+  FindShoeResponse,
   FitStatement,
   Gender,
   RecommendResponse,
@@ -39,6 +40,17 @@ export function search(
 }> {
   return post("/api/search", {
     domain,
+    query,
+    footLengthMm: profile?.footLengthMm,
+    gender: profile?.gender ?? undefined,
+  });
+}
+
+export function findShoe(
+  query: string,
+  profile?: { footLengthMm?: number; gender?: Gender | null },
+): Promise<FindShoeResponse> {
+  return post("/api/find-shoe", {
     query,
     footLengthMm: profile?.footLengthMm,
     gender: profile?.gender ?? undefined,

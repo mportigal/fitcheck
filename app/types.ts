@@ -98,6 +98,25 @@ export interface CheckLabelsResponse extends FitVerdict {
   runLabels: string[];
 }
 
+/** A `find_shoe` result: a `search_catalog` product plus which store it's from. */
+export interface FoundProduct extends CatalogProduct {
+  store: string;
+  storeDomain: string;
+}
+
+export interface FindShoeResponse {
+  query: string;
+  stores: Array<{
+    label: string;
+    domain: string;
+    scanned: number;
+    matched: number;
+    ok: boolean;
+    error?: string;
+  }>;
+  products: FoundProduct[];
+}
+
 export interface RecommendResponse {
   status: "exact" | "rounded_up" | "beyond_range" | "unknown";
   us?: number;

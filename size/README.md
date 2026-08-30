@@ -17,9 +17,11 @@ demo.ts                  npm run demo — the "labels lie, length is truth" pitc
 `checkFit(input, table)` takes `runLabels: string[]` (the Size option's values)
 plus the profile — it does not know or care where the labels came from. UCP is
 **one adapter**: `server/routes.ts` negotiates a store, reads the catalog, hands
-`checkFit` the labels. An agent already on a product page that can read the
-`<select>` itself is another — that path skips UCP entirely (`check_labels` /
-`/api/check-labels`). Same resolver, same verdict; only the label source differs.
+`checkFit` the labels (`check_fit` / `search_catalog`; `find_shoe` fans that same
+path across several stores at once). An agent already on a product page that can
+read the `<select>` itself is another — that path skips UCP entirely
+(`check_labels` / `/api/check-labels`). Same resolver, same verdict; only the
+label source differs.
 
 **Data source:** `sizely-shoe-sample.csv` is a sample dataset from **SizeAI**
 (sizeai.co), provided by Eddy (founder) for this submission on 2026-08-28. Real

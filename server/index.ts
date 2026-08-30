@@ -15,6 +15,7 @@ import {
   routeRecommend,
   routeCheckFit,
   routeCheckLabels,
+  routeFindShoe,
   toHttp,
 } from "./routes.js";
 
@@ -29,6 +30,7 @@ const ROUTES: Record<string, Handler> = {
   "/api/recommend": routeRecommend,
   "/api/check-fit": routeCheckFit,
   "/api/check-labels": routeCheckLabels,
+  "/api/find-shoe": routeFindShoe,
 };
 
 function readBody(req: import("node:http").IncomingMessage): Promise<unknown> {

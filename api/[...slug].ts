@@ -13,6 +13,7 @@ import {
   routeRecommend,
   routeCheckFit,
   routeCheckLabels,
+  routeFindShoe,
   toHttp,
 } from "../server/routes.js";
 
@@ -37,6 +38,7 @@ const ROUTES: Record<string, (body: any) => unknown | Promise<unknown>> = {
   recommend: routeRecommend,
   "check-fit": routeCheckFit,
   "check-labels": routeCheckLabels,
+  "find-shoe": routeFindShoe,
 };
 
 export const config = { maxDuration: 30 };

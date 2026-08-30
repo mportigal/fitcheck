@@ -10,7 +10,7 @@
  * (`navigator.modelContext.registerTool`) the tools are registered there too.
  */
 
-import { checkFit, checkLabels, negotiate, recommend, search } from "./client";
+import { checkFit, checkLabels, findShoe, negotiate, recommend, search } from "./client";
 import {
   addStatement,
   getProfile,
@@ -185,6 +185,36 @@ const TOOLS: Tool[] = [
       if (footLengthMm != null) {
         pushActivity("note", `searched ${res.scanned}, ${res.matched} fit`);
       }
+      return res;
+    },
+  },
+  {
+    name: "find_shoe",
+    readOnly: true,
+    untrustedContent: true,
+    description:
+      "Find a shoe across all the stores we know at once, when the person names a SHOE rather " +
+      "than a store (\"find me the Air Force 1\", \"where can I get Sambas\"). Fans out to every " +
+      "known store in parallel, merges the hits, tags each with its store, and puts fitting " +
+      "products first. Use search_catalog instead when the person names a specific store.",
+    inputSchema: {
+      type: "object",
+      required: ["query"],
+      properties: { query: { type: "string" } },
+    },
+    run: async (args) => {
+      const query = str(args.query);
+      if (!query) throw new Error("query is required");
+      const { footLengthMm, gender } = profileFit();
+      const res = await findShoe(query, footLengthMm != null ? { footLengthMm, gender } : undefined);
+      const ok = res.stores.filter((s) => s.ok).map((s) => `${s.label} (${s.scanned})`).join(" + ");
+      const bad = res.stores.filter((s) => !s.ok).map((s) => `${s.label}: ${s.error}`);
+      const fits = res.products.filter((p) => p.fit?.verdict === "fits").length;
+      pushActivity(
+        "note",
+        `searched ${ok || "(none)"}${footLengthMm != null ? ` — ${fits} fit` : ""}` +
+          (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""),
+      );
       return res;
     },
   },

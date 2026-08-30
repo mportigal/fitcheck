@@ -270,6 +270,87 @@ export function routeCheckLabels(body: {
   return { brand, title: title ?? null, runLabels, ...verdict };
 }
 
+// -------------------------------------------------------------- find_shoe
+
+/** Stores find_shoe fans out to. Hardcoded — this isn't a directory. */
+const FIND_STORES: ReadonlyArray<{ domain: string; label: string }> = [
+  { domain: "kith.com", label: "Kith" },
+  { domain: "stompingground.myshopify.com", label: "Stomping Ground" },
+];
+
+const FIND_STORE_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms);
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer));
+}
+
+type SearchProduct = Awaited<ReturnType<typeof routeSearch>>["products"][number];
+type FoundProduct = SearchProduct & { store: string; storeDomain: string };
+
+/**
+ * Search every store in FIND_STORES at once and merge the hits, so the caller
+ * can ask for a shoe instead of a store. Reuses routeSearch per store — no
+ * re-implemented negotiation or resolution.
+ *
+ * Deliberately NOT deduplicated across stores: the same shoe has a different
+ * product id and a different title at each retailer, with no shared key to join
+ * on (the same catalog-topology gap the store recon turned up). Both rows are
+ * returned, each tagged with its store.
+ */
+export async function routeFindShoe(body: { query?: string; footLengthMm?: number; gender?: string }) {
+  const query = (body.query ?? "").trim();
+  if (!query) throw new HttpError(400, "query is required");
+
+  const footLengthMm = Number.isFinite(Number(body.footLengthMm)) ? Number(body.footLengthMm) : undefined;
+  const gender = body.gender === "women" ? "women" : body.gender === "men" ? "men" : undefined;
+
+  // Parallel, not sequential — latency is the risk. One store failing or timing
+  // out is reported, not fatal.
+  const settled = await Promise.allSettled(
+    FIND_STORES.map((s) =>
+      withTimeout(routeSearch({ domain: s.domain, query, footLengthMm, gender }), FIND_STORE_TIMEOUT_MS, s.label),
+    ),
+  );
+
+  const stores: Array<{
+    label: string;
+    domain: string;
+    scanned: number;
+    matched: number;
+    ok: boolean;
+    error?: string;
+  }> = [];
+  const merged: FoundProduct[] = [];
+
+  settled.forEach((r, i) => {
+    const meta = FIND_STORES[i];
+    if (r.status === "fulfilled") {
+      stores.push({ label: meta.label, domain: meta.domain, scanned: r.value.scanned, matched: r.value.matched, ok: true });
+      for (const p of r.value.products) merged.push({ ...p, store: meta.label, storeDomain: meta.domain });
+    } else {
+      stores.push({
+        label: meta.label,
+        domain: meta.domain,
+        scanned: 0,
+        matched: 0,
+        ok: false,
+        error: r.reason instanceof Error ? r.reason.message : String(r.reason),
+      });
+    }
+  });
+
+  // fits first, then everything else. Stable sort, and stores were merged in
+  // FIND_STORES order, so per-store relevance order is kept within each group.
+  const notFit = (p: FoundProduct) => (p.fit?.verdict === "fits" ? 0 : 1);
+  merged.sort((a, b) => notFit(a) - notFit(b));
+
+  return { query, stores, products: merged };
+}
+
 interface EstimateBody {
   statements?: Array<{ brand?: string; gender?: string; system?: string; value?: number }>;
 }
