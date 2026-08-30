@@ -10,7 +10,7 @@
  * (`navigator.modelContext.registerTool`) the tools are registered there too.
  */
 
-import { checkFit, negotiate, recommend, search } from "./client";
+import { checkFit, checkLabels, negotiate, recommend, search } from "./client";
 import {
   addStatement,
   getProfile,
@@ -213,6 +213,43 @@ const TOOLS: Tool[] = [
         throw new Error("no foot-length estimate yet — add fit statements first");
       }
       const verdict = await checkFit(domain, productId, { footLengthMm, gender });
+      pushActivity("note", `${verdict.verdict}: ${verdict.sentence}`);
+      return verdict;
+    },
+  },
+  {
+    name: "check_labels",
+    readOnly: true,
+    untrustedContent: true,
+    description:
+      "Same verdict as check_fit, but you pass the Size option's labels yourself — for when " +
+      "you're already on the product page and can read them. No store access: infers the " +
+      "numbering system from the run, resolves against the profile's foot length (rounding up), " +
+      "and takes gender from the profile. No stock data, so never returns out_of_stock.",
+    inputSchema: {
+      type: "object",
+      required: ["brand", "labels"],
+      properties: {
+        brand: { type: "string" },
+        labels: {
+          type: "array",
+          items: { type: "string" },
+          description: "the Size option's values, e.g. [\"7\",\"8\",\"9\",\"10\"] or [\"41\",\"42\",\"43\"]",
+        },
+        product_title: { type: "string", description: "optional — used only for a women's/men's gender signal" },
+      },
+    },
+    run: async (args) => {
+      const brand = str(args.brand);
+      const labels = Array.isArray(args.labels)
+        ? args.labels.map((l) => str(l)).filter((l): l is string => !!l)
+        : [];
+      if (!brand || labels.length === 0) throw new Error("brand and a non-empty labels array are required");
+      const { footLengthMm, gender } = profileFit();
+      if (footLengthMm === undefined) {
+        throw new Error("no foot-length estimate yet — add fit statements first");
+      }
+      const verdict = await checkLabels(brand, labels, { footLengthMm, gender }, str(args.product_title));
       pushActivity("note", `${verdict.verdict}: ${verdict.sentence}`);
       return verdict;
     },

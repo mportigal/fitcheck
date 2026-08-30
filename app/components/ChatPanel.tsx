@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { onActivity, pushActivity, type Activity } from "../store";
-import type { CatalogProduct, CheckFitResponse, RecommendResponse } from "../types";
+import type {
+  CatalogProduct,
+  CheckFitResponse,
+  CheckLabelsResponse,
+  RecommendResponse,
+} from "../types";
 
 /**
  * The left column. An external agent drives the WebMCP tools and its calls show
@@ -38,7 +43,7 @@ export function ChatPanel() {
               <code>wide</code> · <code>reset</code>
               <br />
               <code>search kith.com sneakers</code> · <code>check 2</code> ·{" "}
-              <code>recommend Nike</code>
+              <code>check labels nike 7,8,9,10</code> · <code>recommend Nike</code>
             </p>
           </div>
         )}
@@ -57,7 +62,7 @@ export function ChatPanel() {
         <textarea
           rows={2}
           value={draft}
-          placeholder='"Nike 9 fits" · "search kith.com sneakers" · "check 2" · "recommend Nike" · "reset"'
+          placeholder='"Nike 9 fits" · "search kith.com sneakers" · "check 2" · "check labels nike 7,8,9,10" · "recommend Nike"'
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -83,6 +88,7 @@ const GENDER = /^(men|women)$/i;
 const WIDTH = /^(narrow|standard|wide)$/i;
 const RESET = /^(reset|clear)$/i;
 const SEARCH = /^search\s+(\S+)\s+(.+)$/i;
+const CHECK_LABELS = /^check\s+labels\s+(.+)$/i;
 const CHECK = /^check\s+(\d+)$/i;
 const RECOMMEND = /^recommend\s+(.+)$/i;
 
@@ -115,6 +121,8 @@ async function interpret(text: string): Promise<void> {
     await call("update_fit_profile", { width: m[1].toLowerCase() });
   } else if ((m = SEARCH.exec(text))) {
     await runSearch(m[1], m[2].trim());
+  } else if ((m = CHECK_LABELS.exec(text))) {
+    await runCheckLabels(m[1]);
   } else if ((m = CHECK.exec(text))) {
     await runCheck(Number(m[1]));
   } else if ((m = RECOMMEND.exec(text))) {
@@ -128,9 +136,33 @@ async function interpret(text: string): Promise<void> {
   } else {
     pushActivity(
       "note",
-      'not understood — try "Nike 9 fits", "search kith.com sneakers", "check 2", "recommend Nike", "reset"',
+      'not understood — try "Nike 9 fits", "search kith.com sneakers", "check 2", ' +
+        '"check labels nike 7,8,9,10", "recommend Nike", "reset"',
     );
   }
+}
+
+async function runCheckLabels(rest: string): Promise<void> {
+  // "<brand words> <comma,joined,sizes>" — the labels are the trailing run of
+  // words that carry a digit or comma; everything before them is the brand.
+  const words = rest.trim().split(/\s+/);
+  let cut = words.length;
+  while (cut > 0 && /[\d,]/.test(words[cut - 1])) cut--;
+  const brand = words.slice(0, cut).join(" ");
+  const labels = words.slice(cut).join("").split(",").map((s) => s.trim()).filter(Boolean);
+
+  if (!brand || labels.length === 0) {
+    pushActivity("note", 'usage: check labels <brand> <comma,separated,sizes> — e.g. "check labels new balance 7,8,9,10"');
+    return;
+  }
+
+  const v = await call<CheckLabelsResponse>("check_labels", { brand, labels });
+  if (!v) return;
+  pushActivity(
+    "result",
+    `check labels — ${brand}  ·  [${labels.join(", ")}]\n` +
+      `${v.recommendedLabel ?? "—"} · ${v.verdict}\n${v.sentence}`,
+  );
 }
 
 async function runSearch(domain: string, query: string): Promise<void> {

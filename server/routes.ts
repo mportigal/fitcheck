@@ -237,6 +237,39 @@ export async function routeCheckFit(body: {
   };
 }
 
+// -------------------------------------------------------------- check_labels
+
+/**
+ * Same verdict as check_fit, but the caller hands over the Size run itself —
+ * for an agent already on the product page that can read the option labels.
+ * No negotiate, no get_product, no availability probe: this route never
+ * touches a store. A stock-driven verdict (`out_of_stock`) therefore can't
+ * arise here; every other verdict (`fits` / `size_up` / `between_sizes` /
+ * `no_size` / `unmapped_brand` / `unknown`) is label-and-profile only.
+ */
+export function routeCheckLabels(body: {
+  brand?: string;
+  labels?: unknown;
+  title?: string;
+  footLengthMm?: number;
+  gender?: string;
+}) {
+  const brand = (body.brand ?? "").trim();
+  const labels = Array.isArray(body.labels)
+    ? body.labels.map((l) => String(l).trim()).filter(Boolean)
+    : [];
+  if (!brand) throw new HttpError(400, "brand is required");
+  if (labels.length === 0) throw new HttpError(400, "labels must be a non-empty array");
+
+  const footLengthMm = Number.isFinite(Number(body.footLengthMm)) ? Number(body.footLengthMm) : null;
+  const gender = body.gender === "women" ? "women" : body.gender === "men" ? "men" : null;
+  const title = (body.title ?? "").trim() || undefined;
+
+  const runLabels = sortSizeLabels(labels);
+  const verdict = checkFit({ brand, gender, footLengthMm, runLabels, title }, table);
+  return { brand, title: title ?? null, runLabels, ...verdict };
+}
+
 interface EstimateBody {
   statements?: Array<{ brand?: string; gender?: string; system?: string; value?: number }>;
 }

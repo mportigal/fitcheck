@@ -1,6 +1,7 @@
 import type {
   CatalogProduct,
   CheckFitResponse,
+  CheckLabelsResponse,
   EstimateResponse,
   FitStatement,
   Gender,
@@ -52,6 +53,21 @@ export function checkFit(
   return post("/api/check-fit", {
     domain,
     productId,
+    footLengthMm: profile.footLengthMm,
+    gender: profile.gender ?? undefined,
+  });
+}
+
+export function checkLabels(
+  brand: string,
+  labels: string[],
+  profile: { footLengthMm?: number; gender?: Gender | null },
+  title?: string,
+): Promise<CheckLabelsResponse> {
+  return post("/api/check-labels", {
+    brand,
+    labels,
+    title,
     footLengthMm: profile.footLengthMm,
     gender: profile.gender ?? undefined,
   });

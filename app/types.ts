@@ -91,6 +91,13 @@ export interface CheckFitResponse extends FitVerdict {
   brand: string;
 }
 
+/** `check_labels`: the caller supplied the run, so there's no product id/url. */
+export interface CheckLabelsResponse extends FitVerdict {
+  brand: string;
+  title: string | null;
+  runLabels: string[];
+}
+
 export interface RecommendResponse {
   status: "exact" | "rounded_up" | "beyond_range" | "unknown";
   us?: number;

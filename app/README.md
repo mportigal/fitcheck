@@ -38,8 +38,9 @@ and always on `window.fitcheckMCP` (`.listTools()`, `.callTool(name, args)`) and
 
 Each descriptor carries `annotations`: `readOnlyHint` on every tool that doesn't
 mutate the profile (`get_fit_profile`, `search_catalog`, `check_fit`,
-`negotiate_store`, `recommend_size`), and `untrustedContentHint` on the two that
-return third-party catalog text (`search_catalog`, `check_fit`).
+`check_labels`, `negotiate_store`, `recommend_size`), and `untrustedContentHint`
+on the three that carry third-party page text (`search_catalog`, `check_fit`,
+`check_labels`).
 
 | tool | writes | notes |
 |---|---|---|
@@ -50,6 +51,7 @@ return third-party catalog text (`search_catalog`, `check_fit`).
 | `reset_fit_profile` | — | clear everything |
 | `search_catalog` | — | `{domain, query}` → server → ucp/; each product carries a `fit` verdict + `scanned`/`matched` when the profile has a foot length |
 | `check_fit` | — | `{domain, product_id}` → deep per-product verdict (see below) |
+| `check_labels` | — | `{brand, labels[], product_title?}` → same verdict, **no store access** — the caller supplies the run |
 | `negotiate_store` | — | `{domain}` → server → ucp/ |
 | `recommend_size` | — | `{brand}` → size to buy for the current estimate (rounds up) |
 
@@ -76,6 +78,14 @@ returns zero variants for both, so a listed-but-ungettable size reads as
 `get_product` per hit, so never `out_of_stock`) plus `scanned` / `matched`
 counts — enough for "searched 40, 6 fit". Run `check_fit` on a specific product
 for the stock-aware answer.
+
+**The resolver is source-agnostic — UCP is one adapter.** `checkFit` only wants
+the Size run and the profile; where the labels come from is the adapter's
+problem. `check_fit` / `search_catalog` get them by negotiating a store and
+reading its catalog. `check_labels` (`POST /api/check-labels`) gets them from the
+caller — an agent already on the product page that read the `<select>` itself —
+and never touches a store. Same verdict; no `out_of_stock` on that path, since
+there's no stock data.
 
 Every statement change re-runs `POST /api/estimate` (which calls
 `size/estimateFootLength`), so the foot-length range and per-statement

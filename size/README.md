@@ -1,15 +1,25 @@
 # size/ — label ↔ foot length
 
-A brand's printed size is not a measurement. This layer turns a catalog size
-label into a **foot length in millimetres** (what actually fits a foot) and back.
-It sits between the UCP catalog read and the fit check.
+A brand's printed size is not a measurement. This layer turns a size label into a
+**foot length in millimetres** (what actually fits a foot) and back, then decides
+whether a given product fits.
 
 ```
 sizely-shoe-sample.csv   reference rows from SizeAI — real measurements, not a curve
 resolver.ts              SizeTable: resolve() / recommend() / estimateFootLength() / parseSizeLabel()
-resolver.test.ts         npm test — node:test via tsx
+fit.ts                   checkFit(): a Size run + a profile -> a per-product verdict
+resolver.test.ts / fit.test.ts   npm test — node:test via tsx
 demo.ts                  npm run demo — the "labels lie, length is truth" pitch, end to end
 ```
+
+## Source-agnostic
+
+`checkFit(input, table)` takes `runLabels: string[]` (the Size option's values)
+plus the profile — it does not know or care where the labels came from. UCP is
+**one adapter**: `server/routes.ts` negotiates a store, reads the catalog, hands
+`checkFit` the labels. An agent already on a product page that can read the
+`<select>` itself is another — that path skips UCP entirely (`check_labels` /
+`/api/check-labels`). Same resolver, same verdict; only the label source differs.
 
 **Data source:** `sizely-shoe-sample.csv` is a sample dataset from **SizeAI**
 (sizeai.co), provided by Eddy (founder) for this submission on 2026-08-28. Real

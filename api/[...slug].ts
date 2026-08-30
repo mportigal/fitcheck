@@ -12,6 +12,7 @@ import {
   routeEstimate,
   routeRecommend,
   routeCheckFit,
+  routeCheckLabels,
   toHttp,
 } from "../server/routes.js";
 
@@ -35,6 +36,7 @@ const ROUTES: Record<string, (body: any) => unknown | Promise<unknown>> = {
   estimate: routeEstimate,
   recommend: routeRecommend,
   "check-fit": routeCheckFit,
+  "check-labels": routeCheckLabels,
 };
 
 export const config = { maxDuration: 30 };
