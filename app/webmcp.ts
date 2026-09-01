@@ -60,6 +60,30 @@ function profileFit(): { footLengthMm: number | undefined; gender: Gender | null
   return { footLengthMm: mm, gender: p.gender };
 }
 
+/**
+ * The foot length, or a throw that names what's actually missing — not a blanket
+ * "add fit statements first" when a statement was just added.
+ */
+function footLengthOrThrow(): number {
+  const { footLengthMm } = profileFit();
+  if (footLengthMm !== undefined) return footLengthMm;
+
+  const p = getProfile();
+  if (p.statements.length === 0) {
+    throw new Error(
+      'no foot length in the profile — add a fit you know first, e.g. ' +
+        'add_fit_statement({ brand: "Nike", value: 9 })',
+    );
+  }
+  if (p.estimateStatus === "unresolved") {
+    throw new Error(
+      `none of the ${p.statements.length} fit statement(s) resolved to a foot length ` +
+        `(brands may be unmapped: ${p.statements.map((s) => s.brand).join(", ")})`,
+    );
+  }
+  throw new Error(`no foot length available (estimate status: "${p.estimateStatus}")`);
+}
+
 const TOOLS: Tool[] = [
   {
     name: "get_fit_profile",
@@ -93,7 +117,7 @@ const TOOLS: Tool[] = [
         },
       },
     },
-    run: (args) => {
+    run: async (args) => {
       const patch: { gender?: Gender | null; width?: Width | null } = {};
       if ("gender" in args) patch.gender = args.gender === null ? null : asGender(args.gender) ?? null;
       if ("width" in args) patch.width = args.width === null ? null : asWidth(args.width) ?? null;
@@ -109,7 +133,7 @@ const TOOLS: Tool[] = [
             return { brand, value, gender: asGender(o.gender), system: asSystem(o.system) };
           })
           .filter((s): s is NonNullable<typeof s> => s !== null);
-        setStatements(list);
+        await setStatements(list); // resolves after the estimate lands
       }
       return getProfile();
     },
@@ -129,11 +153,13 @@ const TOOLS: Tool[] = [
         system: { type: "string", enum: ["us", "uk", "eu"] },
       },
     },
-    run: (args) => {
+    run: async (args) => {
       const brand = str(args.brand);
       const value = num(args.value);
       if (!brand || value === undefined) throw new Error("brand and numeric value are required");
-      const stmt = addStatement({ brand, value, gender: asGender(args.gender), system: asSystem(args.system) });
+      // Awaits the estimate — the profile in the return value already has the
+      // updated foot-length range, so a follow-up tool call can rely on it.
+      const stmt = await addStatement({ brand, value, gender: asGender(args.gender), system: asSystem(args.system) });
       return { added: stmt, profile: getProfile() };
     },
   },
@@ -145,10 +171,10 @@ const TOOLS: Tool[] = [
       required: ["id"],
       properties: { id: { type: "string" } },
     },
-    run: (args) => {
+    run: async (args) => {
       const id = str(args.id);
       if (!id) throw new Error("id is required");
-      removeStatement(id);
+      await removeStatement(id); // resolves after the estimate re-lands
       return getProfile();
     },
   },
@@ -238,10 +264,8 @@ const TOOLS: Tool[] = [
       const domain = str(args.domain);
       const productId = str(args.product_id);
       if (!domain || !productId) throw new Error("domain and product_id are required");
-      const { footLengthMm, gender } = profileFit();
-      if (footLengthMm === undefined) {
-        throw new Error("no foot-length estimate yet — add fit statements first");
-      }
+      const footLengthMm = footLengthOrThrow();
+      const { gender } = profileFit();
       const verdict = await checkFit(domain, productId, { footLengthMm, gender });
       pushActivity("note", `${verdict.verdict}: ${verdict.sentence}`);
       return verdict;
@@ -275,10 +299,8 @@ const TOOLS: Tool[] = [
         ? args.labels.map((l) => str(l)).filter((l): l is string => !!l)
         : [];
       if (!brand || labels.length === 0) throw new Error("brand and a non-empty labels array are required");
-      const { footLengthMm, gender } = profileFit();
-      if (footLengthMm === undefined) {
-        throw new Error("no foot-length estimate yet — add fit statements first");
-      }
+      const footLengthMm = footLengthOrThrow();
+      const { gender } = profileFit();
       const verdict = await checkLabels(brand, labels, { footLengthMm, gender }, str(args.product_title));
       pushActivity("note", `${verdict.verdict}: ${verdict.sentence}`);
       return verdict;
@@ -316,11 +338,9 @@ const TOOLS: Tool[] = [
     run: async (args) => {
       const brand = str(args.brand);
       if (!brand) throw new Error("brand is required");
-      const p = getProfile();
-      const mm = p.footLength?.bestMm ?? (p.footLength ? (p.footLength.low + p.footLength.high) / 2 : undefined);
-      if (mm === undefined) throw new Error("no foot-length estimate yet — add fit statements first");
-      const gender = asGender(args.gender) ?? p.gender ?? "men";
-      return recommend(brand, gender, mm);
+      const footLengthMm = footLengthOrThrow();
+      const gender = asGender(args.gender) ?? getProfile().gender ?? "men";
+      return recommend(brand, gender, footLengthMm);
     },
   },
 ];

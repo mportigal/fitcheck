@@ -73,12 +73,16 @@ export function patchProfile(fields: { gender?: Gender | null; width?: Width | n
   });
 }
 
-export function addStatement(input: {
+// These await recompute() before resolving. An agent driving the tools back to
+// back has no way to know the estimate lands asynchronously — so the mutation
+// isn't "done" until the foot-length range it implies is in the store.
+
+export async function addStatement(input: {
   brand: string;
   gender?: Gender;
   system?: SizeSystem;
   value: number;
-}): FitStatement {
+}): Promise<FitStatement> {
   const stmt: FitStatement = {
     id: rid(),
     brand: input.brand.trim(),
@@ -87,18 +91,18 @@ export function addStatement(input: {
     value: input.value,
   };
   set({ ...profile, statements: [...profile.statements, stmt] });
-  void recompute();
+  await recompute();
   return stmt;
 }
 
-export function removeStatement(id: string) {
+export async function removeStatement(id: string): Promise<void> {
   set({ ...profile, statements: profile.statements.filter((s) => s.id !== id) });
-  void recompute();
+  await recompute();
 }
 
-export function setStatements(
+export async function setStatements(
   list: Array<{ brand: string; gender?: Gender; system?: SizeSystem; value: number }>,
-) {
+): Promise<void> {
   set({
     ...profile,
     statements: list.map((s) => ({
@@ -109,7 +113,7 @@ export function setStatements(
       value: s.value,
     })),
   });
-  void recompute();
+  await recompute();
 }
 
 export function resetProfile() {
